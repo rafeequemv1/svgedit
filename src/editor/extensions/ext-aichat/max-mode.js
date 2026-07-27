@@ -1,7 +1,7 @@
 /**
  * Max mode — two-step graphical abstract / poster / slide builder.
  * Step 1: text model plans layout (JSON).
- * Step 2: generate BioRender icons + SVG pieces and place them.
+ * Step 2: generate BioRender icons + SVG pieces and place them with live canvas progress.
  */
 
 import { generateGeminiText, generateGeminiImage, extractSvgFromText } from './gemini.js'
@@ -10,6 +10,26 @@ import { placeImageOnCanvas, buildRasterPrompt } from './place-image.js'
 const NS_SVG = 'http://www.w3.org/2000/svg'
 const MAX_ITEMS = 14
 const MAX_ICONS = 8
+
+const delay = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) {
+    reject(new DOMException('Aborted', 'AbortError'))
+    return
+  }
+  const t = setTimeout(resolve, ms)
+  signal?.addEventListener('abort', () => {
+    clearTimeout(t)
+    reject(new DOMException('Aborted', 'AbortError'))
+  }, { once: true })
+})
+
+const paint = (svgEditor) => {
+  try {
+    const { svgCanvas } = svgEditor
+    svgCanvas.call?.('changed', [svgCanvas.getSvgContent?.()].filter(Boolean))
+    svgEditor.updateCanvas?.(false)
+  } catch (_) { /* ignore */ }
+}
 
 /**
  * @param {{w:number,h:number}} canvas
@@ -61,7 +81,6 @@ export function extractMaxPlan (text) {
   if (!text) return null
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const raw = (fenced?.[1] || text).trim()
-  // Find outermost JSON object
   const start = raw.indexOf('{')
   const end = raw.lastIndexOf('}')
   if (start < 0 || end <= start) return null
@@ -96,7 +115,6 @@ function normalizePlan (plan) {
     })
     .filter((it) => it.prompt)
 
-  // Cap icon/image count
   let raster = 0
   items = items.filter((it) => {
     if (it.kind === 'svg') return true
@@ -130,14 +148,108 @@ export function formatPlanForChat (plan) {
     const tag = it.kind === 'icon' ? 'icon' : it.kind === 'image' ? 'image' : 'svg'
     lines.push(`${i + 1}. [${tag}] ${it.id} @ (${it.x},${it.y}) ${it.w}×${it.h} — ${it.prompt.slice(0, 100)}`)
   })
-  lines.push('', 'Building now…')
+  lines.push('', 'Building on canvas…')
   return lines.filter(Boolean).join('\n')
 }
 
 /**
- * Place an SVG fragment into a positioned nested <svg> box.
+ * Draw live layout placeholders so the canvas shows progress before content arrives.
+ * @returns {Map<string, Element>}
  */
-export function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
+export function drawLayoutGuides (svgEditor, plan) {
+  const { svgCanvas } = svgEditor
+  const parent = svgCanvas.getCurrentGroup?.() ||
+    svgCanvas.getCurrentDrawing?.()?.getCurrentLayer?.()
+  const map = new Map()
+  if (!parent) return map
+
+  const doc = svgCanvas.getDOMDocument()
+  const layer = doc.createElementNS(NS_SVG, 'g')
+  layer.setAttribute('id', svgCanvas.getNextId())
+  layer.setAttribute('data-ai-max-guides', '1')
+  layer.style.pointerEvents = 'none'
+  parent.append(layer)
+
+  plan.items.forEach((item, i) => {
+    const g = doc.createElementNS(NS_SVG, 'g')
+    g.setAttribute('data-ai-max-slot', item.id)
+
+    const rect = doc.createElementNS(NS_SVG, 'rect')
+    rect.setAttribute('x', String(item.x))
+    rect.setAttribute('y', String(item.y))
+    rect.setAttribute('width', String(item.w))
+    rect.setAttribute('height', String(item.h))
+    rect.setAttribute('fill', item.kind === 'svg' ? '#e8f0fe' : '#eef8f0')
+    rect.setAttribute('fill-opacity', '0.55')
+    rect.setAttribute('stroke', item.kind === 'svg' ? '#0D99FF' : '#3d9a5f')
+    rect.setAttribute('stroke-width', '1.5')
+    rect.setAttribute('stroke-dasharray', '6 4')
+    rect.setAttribute('rx', '4')
+
+    const label = doc.createElementNS(NS_SVG, 'text')
+    label.setAttribute('x', String(item.x + 8))
+    label.setAttribute('y', String(item.y + 18))
+    label.setAttribute('fill', '#555')
+    label.setAttribute('font-family', 'sans-serif')
+    label.setAttribute('font-size', String(Math.min(14, Math.max(10, item.w / 18))))
+    label.textContent = `${i + 1}. ${item.kind} · ${item.id}`
+
+    const status = doc.createElementNS(NS_SVG, 'text')
+    status.setAttribute('x', String(item.x + 8))
+    status.setAttribute('y', String(item.y + item.h - 10))
+    status.setAttribute('fill', '#888')
+    status.setAttribute('font-family', 'sans-serif')
+    status.setAttribute('font-size', '11')
+    status.setAttribute('data-ai-max-status', '1')
+    status.textContent = 'waiting…'
+
+    g.append(rect, label, status)
+    layer.append(g)
+    map.set(item.id, g)
+  })
+
+  paint(svgEditor)
+  return map
+}
+
+function setGuideState (guide, state) {
+  if (!guide) return
+  const rect = guide.querySelector('rect')
+  const status = guide.querySelector('[data-ai-max-status]')
+  if (!rect) return
+  if (state === 'active') {
+    rect.setAttribute('stroke-width', '2.5')
+    rect.setAttribute('fill-opacity', '0.75')
+    rect.setAttribute('stroke-dasharray', '4 3')
+    if (status) status.textContent = 'generating…'
+  } else if (state === 'done') {
+    if (status) status.textContent = 'done'
+  } else if (state === 'fail') {
+    rect.setAttribute('stroke', '#c44')
+    if (status) status.textContent = 'failed'
+  }
+}
+
+function removeGuide (guide) {
+  try { guide?.remove() } catch (_) { /* ignore */ }
+}
+
+function fadeInElement (el, ms = 280) {
+  if (!el) return
+  el.style.opacity = '0'
+  el.style.transition = `opacity ${ms}ms ease`
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.style.opacity = '1'
+    })
+  })
+}
+
+/**
+ * Place an SVG fragment into a positioned nested <svg> box with progressive child reveal.
+ */
+export async function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
+  const { signal, stepMs = 28, onProgress } = opts
   const { svgCanvas } = svgEditor
   const { InsertElementCommand, BatchCommand } = svgCanvas.history
   let xml = svgXml
@@ -170,16 +282,36 @@ export function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
   nest.setAttribute('viewBox', vb)
   nest.setAttribute('overflow', 'visible')
   nest.setAttribute('data-ai-max', opts.role || 'svg')
-
-  for (const child of [...src.childNodes]) {
-    if (child.nodeType === 1) {
-      nest.append(svgCanvas.getDOMDocument().importNode(child, true))
-    }
-  }
   parent.append(nest)
   batch.addSubCommand(new InsertElementCommand(nest))
+
+  const kids = [...src.children].filter((c) => c.nodeType === 1)
+  const defs = kids.filter((c) => c.tagName?.toLowerCase() === 'defs')
+  const rest = kids.filter((c) => c.tagName?.toLowerCase() !== 'defs')
+
+  for (const d of defs) {
+    nest.append(svgCanvas.getDOMDocument().importNode(d, true))
+  }
+
+  const total = Math.max(1, rest.length)
+  let i = 0
+  for (const child of rest) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    const node = svgCanvas.getDOMDocument().importNode(child, true)
+    node.style.opacity = '0'
+    node.style.transition = 'opacity 160ms ease'
+    nest.append(node)
+    requestAnimationFrame(() => { node.style.opacity = '1' })
+    i++
+    onProgress?.({ index: i, total, label: `Drawing ${i}/${total}` })
+    paint(svgEditor)
+    await delay(stepMs, signal)
+  }
+
   svgCanvas.addCommandToHistory(batch)
+  svgCanvas.selectOnly?.([nest], true)
   svgCanvas.call?.('changed', [nest])
+  paint(svgEditor)
   return { ok: true, element: nest }
 }
 
@@ -191,7 +323,7 @@ Return ONLY the SVG (optional short caption text outside is ok but SVG is requir
 }
 
 /**
- * Run Max mode: plan then build.
+ * Run Max mode: plan then build with live canvas progress.
  * @param {object} ctx
  */
 export async function runMaxMode (ctx) {
@@ -202,7 +334,6 @@ export async function runMaxMode (ctx) {
     imageModel,
     userPrompt,
     includeCanvas,
-    placeMode,
     signal,
     onStep,
     onPlan,
@@ -235,13 +366,16 @@ export async function runMaxMode (ctx) {
   }
   onPlan?.(plan, planText)
 
-  onStep?.(1, 'Preparing canvas')
+  onStep?.(1, 'Drawing layout on canvas')
   const empty = `<svg xmlns="${NS_SVG}" width="${plan.canvas.width}" height="${plan.canvas.height}"></svg>`
-  // Max compositions always size the canvas to the plan
   if (svgCanvas.setSvgString(empty) === false) {
     throw new Error('Failed to prepare canvas for Max composition')
   }
   svgEditor.updateCanvas?.(true)
+  await delay(40, signal)
+
+  const guides = drawLayoutGuides(svgEditor, plan)
+  await delay(180, signal)
 
   let okIcons = 0
   let okSvg = 0
@@ -250,6 +384,9 @@ export async function runMaxMode (ctx) {
   for (let i = 0; i < plan.items.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const item = plan.items[i]
+    const guide = guides.get(item.id)
+    setGuideState(guide, 'active')
+    paint(svgEditor)
     onStep?.(2, `${i + 1}/${plan.items.length}: ${item.id}`)
     onItem?.(item, i, plan.items.length)
 
@@ -270,6 +407,9 @@ export async function runMaxMode (ctx) {
           signal,
           aspectRatio: '1:1'
         })
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+        removeGuide(guide)
+        guides.delete(item.id)
         const placed = await placeImageOnCanvas(svgEditor, img.dataUrl, {
           mode: 'append',
           icon: item.kind === 'icon',
@@ -278,8 +418,14 @@ export async function runMaxMode (ctx) {
           width: item.w,
           height: item.h
         })
-        if (placed.ok) okIcons++
-        else fails++
+        if (placed.ok) {
+          fadeInElement(placed.element, 320)
+          okIcons++
+        } else {
+          fails++
+        }
+        paint(svgEditor)
+        await delay(120, signal)
       } else {
         const reply = await generateGeminiText({
           apiKey,
@@ -288,24 +434,44 @@ export async function runMaxMode (ctx) {
           systemInstruction: buildSvgPieceSystemPrompt(item, item.role),
           signal
         })
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
         const svg = extractSvgFromText(reply)
         if (!svg) {
+          setGuideState(guide, 'fail')
           fails++
+          paint(svgEditor)
           continue
         }
-        const placed = placeSvgInBox(svgEditor, svg, item, { role: item.role })
-        if (placed.ok) okSvg++
-        else fails++
+        removeGuide(guide)
+        guides.delete(item.id)
+        const placed = await placeSvgInBox(svgEditor, svg, item, {
+          role: item.role,
+          signal,
+          stepMs: 24,
+          onProgress: (p) => onStep?.(3, `${item.id}: ${p.label}`)
+        })
+        if (placed.ok) {
+          fadeInElement(placed.element, 200)
+          okSvg++
+        } else {
+          fails++
+        }
+        paint(svgEditor)
+        await delay(80, signal)
       }
     } catch (err) {
       if (err?.name === 'AbortError') throw err
+      setGuideState(guide, 'fail')
       fails++
+      paint(svgEditor)
       onItem?.(item, i, plan.items.length, err)
     }
   }
 
+  for (const g of guides.values()) removeGuide(g)
+
   onStep?.(4, 'Done')
-  svgEditor.updateCanvas?.(false)
+  paint(svgEditor)
   return {
     plan,
     okIcons,
