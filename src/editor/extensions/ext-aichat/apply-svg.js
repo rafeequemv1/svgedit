@@ -350,6 +350,7 @@ export function conversationalTextFromReply (text, svg) {
   }
   out = out
     .replace(/```(?:svg|xml)?\s*[\s\S]*?```/gi, '')
+    .replace(/```(?:vega-lite|vega|vl|echarts|echart)\s*[\s\S]*?```/gi, '')
     .replace(/```tools?\s*[\s\S]*?```/gi, '')
     .replace(/<\/?svg\b[\s\S]*$/i, '')
     .replace(/\n{3,}/g, '\n\n')
@@ -468,6 +469,7 @@ export function buildGenerativeIntentContext (history, actionHistory = []) {
 export function looksLikeGenerativeIntent (prompt, opts = {}) {
   const text = String(prompt || '').trim()
   if (opts.hasImages) return true
+  if (opts.hasCsv && opts.usePlots) return true
   if (!text) return false
   if (DECLINE_RE.test(text)) return false
   if (opts.editSelection && looksLikeEditIntent(text)) return true
@@ -475,6 +477,9 @@ export function looksLikeGenerativeIntent (prompt, opts = {}) {
   if (CHITCHAT_RE.test(text) || META_HELP_RE.test(text)) return false
 
   const p = text.toLowerCase()
+  if (opts.usePlots && /\b(plot|chart|graph|histogram|scatter|bar chart|line chart|box plot|heatmap|time series|x-axis|y-axis)\b/i.test(text)) {
+    return true
+  }
   if (opts.lastModelOfferedGeneration) {
     if (DRAW_VERBS_RE.test(p)) return true
     if (text.length >= 14 && !/^(how|what|why|when|where|who|tell me about|explain)\b/i.test(text)) return true
@@ -536,15 +541,18 @@ export function summarizeSelectionSvg (selectionSvg) {
 }
 
 import { buildEditorToolsPromptSection } from './place-tools.js'
+import { buildPlotPromptSection } from './apply-plot.js'
 
 /**
  * Build system prompt: conversational assistant that knows every tool and draws when asked.
- * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string, useBrushes?: boolean, chatOnly?: boolean, taskMode?: string }} ctx
+ * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, hasCsv?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string, useBrushes?: boolean, usePlots?: boolean, plotEngine?: string, chatOnly?: boolean, taskMode?: string }} ctx
  */
 export function buildSystemPrompt (ctx) {
   const {
-    w, h, mode, includeCanvas, canvasSvg, hasImages, selectionSvg, selectionSummary, continuityNote,
+    w, h, mode, includeCanvas, canvasSvg, hasImages, hasCsv, selectionSvg, selectionSummary, continuityNote,
     useBrushes = false,
+    usePlots = false,
+    plotEngine = 'vega',
     chatOnly = false,
     taskMode = 'draw'
   } = ctx
@@ -561,7 +569,7 @@ ${buildChatOnlyNote(taskMode)}
 You are conversational: chat naturally, retain prior turns, ask clarifying questions when needed, and explain editor tools when asked.
 IMPORTANT: Never use function calling, tool calls, tool_request JSON, or API tool schemas. The host app is not a tool-calling agent. Draw by emitting SVG markup in your reply; otherwise answer in plain text.
 When the user wants something drawn, illustrated, diagrammed, sketched, or added to the canvas — you MUST output valid SVG that the app will place on the canvas automatically.
-${hasImages ? 'The user attached image(s). Treat them as visual reference: describe, recreate as clean SVG, vectorize/style-match, or extract diagrams as requested.\n' : ''}
+${hasImages ? 'The user attached image(s). Treat them as visual reference: describe, recreate as clean SVG, vectorize/style-match, or extract diagrams as requested.\n' : ''}${hasCsv ? 'The user attached CSV data for plotting. Use the column names from the attachment in your chart spec; leave data arrays empty for host injection.\n' : ''}
 ${selectionSvg
     ? `SELECTION EDIT MODE: The user selected element(s) on the canvas. Edit ONLY that selection. Return a complete <svg> whose children REPLACE the selection (same approximate position/size unless asked otherwise). Do not redraw the whole document.\nSELECTED MARKUP:\n${selectionSvg.slice(0, 12000)}\n`
     : (selectionSummary
@@ -648,6 +656,10 @@ Helpful illustration partner for science and general diagrams: concise, clear. A
 `
 
   prompt += `\n${buildEditorToolsPromptSection({ useBrushes, w, h })}\n`
+
+  if (usePlots) {
+    prompt += `\n${buildPlotPromptSection(plotEngine === 'echarts' ? 'echarts' : 'vega')}\n`
+  }
 
   if (continuityNote) {
     prompt += `\n${continuityNote}\n`

@@ -11,6 +11,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   resolveActiveModel,
   resolveImageModel,
+  generateGeminiText,
   generateGeminiTextWithMeta,
   generateGeminiImage,
   extractSvgFromText,
@@ -40,6 +41,13 @@ import {
   buildUserParts,
   MAX_IMAGES
 } from './image-attach.js'
+import {
+  parseCsvFile,
+  formatCsvForPrompt,
+  csvFilesFromDataTransfer,
+  MAX_CSV_FILES
+} from './csv-attach.js'
+import { applyPlotFromReply, extractPlotSpecFromText } from './apply-plot.js'
 
 const name = 'aichat'
 const LS_KEY = 'svgedit.gemini.apiKey'
@@ -50,6 +58,8 @@ const LS_OPEN = 'svgedit.aichat.open'
 const LS_COMPARE = 'svgedit.aichat.compare'
 const LS_COMPARE_MODELS = 'svgedit.aichat.compareModels'
 const LS_USE_BRUSHES = 'svgedit.aichat.useBrushes'
+const LS_USE_PLOTS = 'svgedit.aichat.usePlots'
+const LS_PLOT_ENGINE = 'svgedit.aichat.plotEngine'
 
 const loadExtensionTranslation = async function (svgEditor) {
   let translationModule
@@ -80,6 +90,8 @@ export default {
     const compareSvgCache = new Map()
     /** @type {Array<{id:string, mimeType:string, data:string, previewUrl:string, name:string}>} */
     let pendingImages = []
+    /** @type {Array<{id:string,name:string,columns:string[],rows:object[],rowCount:number}>} */
+    let pendingCsv = []
     let imageIdSeq = 0
     /** @type {AbortController|null} */
     let activeAbort = null
@@ -310,6 +322,11 @@ export default {
     }
     const getCompareOn = () => localStorage.getItem(LS_COMPARE) === '1'
     const getUseBrushes = () => localStorage.getItem(LS_USE_BRUSHES) === '1'
+    const getUsePlots = () => localStorage.getItem(LS_USE_PLOTS) === '1'
+    const getPlotEngine = () => {
+      const v = localStorage.getItem(LS_PLOT_ENGINE) || 'vega'
+      return v === 'echarts' ? 'echarts' : 'vega'
+    }
 
     const fillModelSelect = (sel, models, selectedId) => {
       if (!sel) return
@@ -501,11 +518,12 @@ export default {
       }
     }
 
-    const renderPendingImages = () => {
+    const renderAttachStrip = () => {
       const strip = $id('ai_attach_strip')
       if (!strip) return
       strip.innerHTML = ''
-      strip.style.display = pendingImages.length ? 'flex' : 'none'
+      const hasAny = pendingImages.length || pendingCsv.length
+      strip.style.display = hasAny ? 'flex' : 'none'
       pendingImages.forEach((img) => {
         const chip = document.createElement('div')
         chip.className = 'ai-attach-chip'
@@ -519,13 +537,34 @@ export default {
         rm.textContent = '×'
         rm.addEventListener('click', () => {
           pendingImages = pendingImages.filter((p) => p.id !== img.id)
-          renderPendingImages()
+          renderAttachStrip()
         })
         chip.appendChild(thumb)
         chip.appendChild(rm)
         strip.appendChild(chip)
       })
+      pendingCsv.forEach((csv) => {
+        const chip = document.createElement('div')
+        chip.className = 'ai-attach-chip ai-attach-chip-csv'
+        chip.title = `${csv.name} (${csv.rowCount} rows)`
+        const label = document.createElement('span')
+        label.textContent = `${csv.name}\n${csv.rowCount} rows`
+        const rm = document.createElement('button')
+        rm.type = 'button'
+        rm.className = 'ai-attach-remove'
+        rm.title = t(svgEditor, 'removeImage')
+        rm.textContent = '×'
+        rm.addEventListener('click', () => {
+          pendingCsv = pendingCsv.filter((p) => p.id !== csv.id)
+          renderAttachStrip()
+        })
+        chip.appendChild(label)
+        chip.appendChild(rm)
+        strip.appendChild(chip)
+      })
     }
+
+    const renderPendingImages = () => renderAttachStrip()
 
     const addImageFiles = async (files) => {
       const list = [...files].filter((f) => f?.type?.startsWith('image/'))
@@ -558,9 +597,65 @@ export default {
       }
     }
 
-    const clearPendingImages = () => {
+    const addCsvFiles = async (files) => {
+      if (!getUsePlots()) {
+        setStatus(t(svgEditor, 'usePlotsHint'), true)
+        return
+      }
+      const list = [...files].filter((f) => {
+        const name = String(f?.name || '').toLowerCase()
+        return f?.type === 'text/csv' || f?.type === 'application/vnd.ms-excel' || name.endsWith('.csv')
+      })
+      if (!list.length) return
+      const room = MAX_CSV_FILES - pendingCsv.length
+      if (room <= 0) {
+        setStatus(t(svgEditor, 'csvTooMany').replace('{{n}}', String(MAX_CSV_FILES)), true)
+        return
+      }
+      const slice = list.slice(0, room)
+      try {
+        for (const file of slice) {
+          const parsed = await parseCsvFile(file)
+          pendingCsv.push(parsed)
+        }
+        if (list.length > room) {
+          setStatus(t(svgEditor, 'csvTooMany').replace('{{n}}', String(MAX_CSV_FILES)), true)
+        } else {
+          const last = pendingCsv[pendingCsv.length - 1]
+          setStatus(t(svgEditor, 'csvAttached')
+            .replace('{{name}}', last.name)
+            .replace('{{n}}', String(last.rowCount)))
+        }
+        renderAttachStrip()
+      } catch (err) {
+        setStatus(err?.message || String(err), true)
+      }
+    }
+
+    const clearPendingCsv = () => {
+      pendingCsv = []
+      renderAttachStrip()
+    }
+
+    const clearPendingAttachments = () => {
       pendingImages = []
-      renderPendingImages()
+      pendingCsv = []
+      renderAttachStrip()
+    }
+
+    const syncPlotUi = () => {
+      const on = !!$id('ai_use_plots')?.checked
+      const wrap = $id('ai_plot_engine_wrap')
+      const csvBtn = $id('ai_chat_attach_csv')
+      const hint = $id('ai_attach_hint')
+      if (wrap) wrap.style.display = on ? 'block' : 'none'
+      if (csvBtn) csvBtn.style.display = on ? '' : 'none'
+      if (hint) {
+        hint.textContent = on
+          ? t(svgEditor, 'attachHintPlots')
+          : t(svgEditor, 'attachHint')
+      }
+      if (!on && pendingCsv.length) clearPendingCsv()
     }
 
     const setStatus = (msg, isError = false) => {
@@ -718,13 +813,22 @@ export default {
         previewUrl: p.previewUrl,
         name: p.name
       }))
+      const csvSnapshot = pendingCsv.map((c) => ({
+        id: c.id,
+        name: c.name,
+        columns: c.columns,
+        rows: c.rows,
+        rowCount: c.rowCount
+      }))
+      const usePlots = getUsePlots()
+      const plotEngine = ($id('ai_plot_engine')?.value || getPlotEngine()) === 'echarts' ? 'echarts' : 'vega'
 
       if (!apiKey) {
         setStatus(t(svgEditor, 'needKey'), true)
         $id('ai_api_key')?.focus()
         return
       }
-      if (!prompt && !imagesSnapshot.length) return
+      if (!prompt && !imagesSnapshot.length && !csvSnapshot.length) return
       if (editSelection && !selectionSvg) {
         setStatus(t(svgEditor, 'needSelection'), true)
         return
@@ -748,24 +852,29 @@ export default {
       const { signal } = activeAbort
       setBusyUi(true)
       input.value = ''
-      const generative = imagesSnapshot.length > 0 || looksLikeGenerativeIntent(prompt, {
+      const generative = imagesSnapshot.length > 0 || (csvSnapshot.length > 0 && usePlots) || looksLikeGenerativeIntent(prompt, {
         taskMode,
         editSelection,
         hasSelection: !!liveSelectionSvg,
         hasImages: imagesSnapshot.length > 0,
+        hasCsv: csvSnapshot.length > 0,
+        usePlots,
         ...buildGenerativeIntentContext(history, actionHistory)
       })
+      const promptWithCsv = (prompt || '') + (csvSnapshot.length && usePlots ? formatCsvForPrompt(csvSnapshot) : '')
       const userParts = buildUserParts(
         isRaster && generative
           ? buildRasterPrompt(prompt, taskMode === 'icon' ? 'icon' : 'image')
-          : prompt,
+          : promptWithCsv.trim() || prompt,
         imagesSnapshot
       )
       const displayText = prompt || (imagesSnapshot.length
         ? t(svgEditor, 'imageOnlyPrompt').replace('{{n}}', String(imagesSnapshot.length))
-        : '')
+        : csvSnapshot.length
+          ? csvSnapshot.map((c) => t(svgEditor, 'csvOnlyPrompt').replace('{{name}}', c.name)).join(', ')
+          : '')
       appendMsg('user', displayText, imagesSnapshot)
-      clearPendingImages()
+      clearPendingAttachments()
 
       if (!compareOn) {
         // Drop raw image bytes from older turns to keep context light
@@ -968,12 +1077,15 @@ export default {
           includeCanvas: editSelection ? false : includeCanvas,
           canvasSvg: (!editSelection && includeCanvas) ? svgCanvas.getSvgString() : '',
           hasImages: imagesSnapshot.length > 0,
+          hasCsv: csvSnapshot.length > 0,
           selectionSvg: selectionSvg || undefined,
           selectionSummary: selectionSummary || undefined,
           continuityNote: compareOn
             ? ''
             : buildContinuityNote(history, actionHistory[0] || null),
-          useBrushes
+          useBrushes,
+          usePlots,
+          plotEngine
         })
         const contents = compareOn
           ? [{ role: 'user', parts: userParts }]
@@ -1027,6 +1139,23 @@ export default {
 
         const applyReplyToCanvas = async (replyText, svgOut) => {
           let brushNote = ''
+          let plotApplied = null
+
+          if (usePlots && extractPlotSpecFromText(replyText, plotEngine)) {
+            setSteps(3, plotEngine === 'echarts' ? 'ECharts' : 'Vega-Lite')
+            plotApplied = await applyPlotFromReply(
+              svgEditor,
+              replyText,
+              plotEngine,
+              csvSnapshot,
+              effectiveMode,
+              canvasSize
+            )
+            if (plotApplied.ok) {
+              setStatus(t(svgEditor, 'appliedPlot'))
+            }
+          }
+
           if (useBrushes) {
             const toolSpecs = normalizeToolSpecs(
               parseToolsBlockFromReply(replyText),
@@ -1037,22 +1166,24 @@ export default {
               const placed = placeToolsOnCanvas(svgEditor, toolSpecs)
               if (placed.length) {
                 brushNote = formatBrushPlacementNote(placed, toolSpecs)
-                setStatus(brushNote)
+                if (!plotApplied?.ok) setStatus(brushNote)
               }
             }
           }
           if (!svgOut) {
             return {
-              ok: !!brushNote,
+              ok: !!(brushNote || plotApplied?.ok),
               brushNote,
-              applied: { ok: !!brushNote }
+              plotApplied,
+              applied: plotApplied?.ok ? plotApplied : { ok: !!brushNote }
             }
           }
           setSteps(3)
           const applied = await applyOne(svgOut, effectiveMode, { editSelection, signal })
           return {
-            ok: applied.ok || !!brushNote,
+            ok: applied.ok || !!brushNote || !!plotApplied?.ok,
             brushNote,
+            plotApplied,
             applied
           }
         }
@@ -1076,22 +1207,24 @@ export default {
         }
 
         const { reply, svg, talk, diag: replyDiag } = result
-        const { brushNote, applied, ok: canvasOk } = canvasResult
+        const { brushNote, applied, ok: canvasOk, plotApplied } = canvasResult
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
-        if (svg || brushNote) {
-          if (svg) setSteps(3)
+        if (svg || brushNote || plotApplied?.ok) {
+          if (svg || plotApplied?.ok) setSteps(3)
           history.push({
             role: 'model',
             text: compactModelHistory(reply, svg, canvasOk),
             parts: [{ text: compactModelHistory(reply, svg, canvasOk) }]
           })
           let msg = talk || (canvasOk
-            ? (editSelection ? '✓ Updated selection.' : '✓ Drawn on the canvas.')
-            : (brushNote || 'SVG returned but could not apply.'))
+            ? (plotApplied?.ok && !svg
+              ? t(svgEditor, 'appliedPlot')
+              : (editSelection ? '✓ Updated selection.' : '✓ Drawn on the canvas.'))
+            : (brushNote || plotApplied?.message || 'SVG returned but could not apply.'))
           if (brushNote && canvasOk) {
             msg = `${brushNote}\n\n${msg}`
-          } else if (brushNote && !svg) {
+          } else if (brushNote && !svg && !plotApplied?.ok) {
             msg = brushNote
           }
           const row = appendMsg('model', msg)
@@ -1100,11 +1233,19 @@ export default {
             mode: editSelection ? 'edit-selection' : effectiveMode,
             svg: applied.ok ? svg : undefined,
             note: canvasOk
-              ? (brushNote ? `${brushNote} ${editSelection ? 'Edited selection' : 'Drawn on canvas'}` : (editSelection ? 'Edited selection' : 'Drawn on canvas'))
-              : (brushNote || 'Apply failed')
+              ? (plotApplied?.ok
+                ? `Plot (${plotApplied.engine || plotEngine})`
+                : (brushNote ? `${brushNote} ${editSelection ? 'Edited selection' : 'Drawn on canvas'}` : (editSelection ? 'Edited selection' : 'Drawn on canvas')))
+              : (brushNote || plotApplied?.message || 'Apply failed')
           })
           setSteps(4)
-          if (svg && !applied.ok) {
+          if (plotApplied && !plotApplied.ok && !applied.ok) {
+            showApplyFailure(plotApplied.message || t(svgEditor, 'plotFailed'), {
+              stage: 'plot',
+              engine: plotApplied.engine,
+              message: plotApplied.message
+            }, { row })
+          } else if (svg && !applied.ok) {
             const userMsg = formatUserFacingSvgError({
               ...replyDiag,
               ...(applied.details || {})
@@ -1114,8 +1255,10 @@ export default {
               ...(applied.details || {}),
               stage: 'apply-after-extract'
             }, { row })
-          } else if (brushNote && !svg) {
+          } else if (brushNote && !svg && !plotApplied?.ok) {
             setStatus(brushNote)
+          } else if (plotApplied?.ok && !svg) {
+            setStatus(t(svgEditor, 'appliedPlot'))
           }
           return
         }
@@ -1127,7 +1270,7 @@ export default {
         })
         const noSvgRow = appendMsg('model', talk || reply.slice(0, 2000))
         // Reply looked like it tried to draw but extract failed
-        if (replyDiag.hasSvgOpen || /```\s*svg/i.test(reply)) {
+        if (replyDiag.hasSvgOpen || /```\s*svg/i.test(reply) || (usePlots && /```\s*(?:vega-lite|echarts)/i.test(reply))) {
           showApplyFailure(formatUserFacingSvgError(replyDiag, t(svgEditor, 'emptySvg')), {
             ...replyDiag,
             stage: 'extract',
@@ -1325,6 +1468,20 @@ export default {
             </label>
             <p class="ai_hint">${t(svgEditor, 'useBrushesHint')}</p>
             <label class="ai_check">
+              <input type="checkbox" id="ai_use_plots" />
+              <span>${t(svgEditor, 'usePlots')}</span>
+            </label>
+            <p class="ai_hint">${t(svgEditor, 'usePlotsHint')}</p>
+            <div id="ai_plot_engine_wrap" style="display:none">
+              <label class="ai_field">
+                <span>${t(svgEditor, 'plotEngineLabel')}</span>
+                <select id="ai_plot_engine">
+                  <option value="vega">${t(svgEditor, 'plotEngineVega')}</option>
+                  <option value="echarts">${t(svgEditor, 'plotEngineEcharts')}</option>
+                </select>
+              </label>
+            </div>
+            <label class="ai_check">
               <input type="checkbox" id="ai_edit_selection" />
               <span>${t(svgEditor, 'editSelection')}</span>
             </label>
@@ -1344,13 +1501,15 @@ export default {
             <div id="ai_attach_strip" class="ai_attach_strip" style="display:none"></div>
             <textarea id="ai_chat_input" rows="3" placeholder="${t(svgEditor, 'placeholder')}"></textarea>
             <input type="file" id="ai_image_input" accept="image/*" multiple hidden />
+            <input type="file" id="ai_csv_input" accept=".csv,text/csv" multiple hidden />
             <div class="ai_chat_actions">
               <button type="button" id="ai_chat_attach" class="ai_btn secondary" title="${t(svgEditor, 'attachImagesTitle')}">${t(svgEditor, 'attachImages')}</button>
+              <button type="button" id="ai_chat_attach_csv" class="ai_btn secondary" style="display:none" title="${t(svgEditor, 'attachCsvTitle')}">${t(svgEditor, 'attachCsv')}</button>
               <button type="button" id="ai_chat_clear" class="ai_btn secondary">${t(svgEditor, 'clearChat')}</button>
               <button type="button" id="ai_chat_stop" class="ai_btn danger" style="display:none">${t(svgEditor, 'stop')}</button>
               <button type="button" id="ai_chat_send" class="ai_btn primary">${t(svgEditor, 'send')}</button>
             </div>
-            <p class="ai_hint ai_attach_hint">${t(svgEditor, 'attachHint')}</p>
+            <p class="ai_hint ai_attach_hint" id="ai_attach_hint">${t(svgEditor, 'attachHint')}</p>
           </div>
         `
 
@@ -1371,6 +1530,22 @@ export default {
             localStorage.setItem(LS_USE_BRUSHES, brushesToggle.checked ? '1' : '0')
           })
         }
+        const plotsToggle = $id('ai_use_plots')
+        if (plotsToggle) {
+          plotsToggle.checked = getUsePlots()
+          plotsToggle.addEventListener('change', () => {
+            localStorage.setItem(LS_USE_PLOTS, plotsToggle.checked ? '1' : '0')
+            syncPlotUi()
+          })
+        }
+        const plotEngineSel = $id('ai_plot_engine')
+        if (plotEngineSel) {
+          plotEngineSel.value = getPlotEngine()
+          plotEngineSel.addEventListener('change', () => {
+            localStorage.setItem(LS_PLOT_ENGINE, plotEngineSel.value === 'echarts' ? 'echarts' : 'vega')
+          })
+        }
+        syncPlotUi()
         syncCompareUi()
 
         $click($id('tool_aichat'), () => {
@@ -1382,16 +1557,22 @@ export default {
         $click($id('ai_chat_stop'), () => { stopGeneration() })
         $click($id('ai_refresh_models'), () => { refreshModelsFromApi() })
         $click($id('ai_chat_attach'), () => $id('ai_image_input')?.click())
+        $click($id('ai_chat_attach_csv'), () => $id('ai_csv_input')?.click())
         $id('ai_image_input')?.addEventListener('change', (e) => {
           const files = e.target?.files
           if (files?.length) addImageFiles(files)
+          e.target.value = ''
+        })
+        $id('ai_csv_input')?.addEventListener('change', (e) => {
+          const files = e.target?.files
+          if (files?.length) addCsvFiles(files)
           e.target.value = ''
         })
         $click($id('ai_chat_clear'), () => {
           if (busy) stopGeneration()
           history = []
           compareSvgCache.clear()
-          clearPendingImages()
+          clearPendingAttachments()
           const log = $id('ai_chat_log')
           if (log) log.innerHTML = ''
           setStatus('')
@@ -1427,21 +1608,27 @@ export default {
         })
 
         const composer = panel.querySelector('.ai_chat_composer')
-        const onPasteImages = (e) => {
-          const files = imageFilesFromDataTransfer(e.clipboardData)
-          if (!files.length) return
+        const onPasteAttachments = (e) => {
+          const images = imageFilesFromDataTransfer(e.clipboardData)
+          const csvs = csvFilesFromDataTransfer(e.clipboardData)
+          if (!images.length && !csvs.length) return
           e.preventDefault()
-          addImageFiles(files)
+          if (images.length) addImageFiles(images)
+          if (csvs.length) addCsvFiles(csvs)
         }
-        const onDropImages = (e) => {
-          const files = imageFilesFromDataTransfer(e.dataTransfer)
-          if (!files.length) return
+        const onDropAttachments = (e) => {
+          const images = imageFilesFromDataTransfer(e.dataTransfer)
+          const csvs = csvFilesFromDataTransfer(e.dataTransfer)
+          if (!images.length && !csvs.length) return
           e.preventDefault()
-          addImageFiles(files)
+          if (images.length) addImageFiles(images)
+          if (csvs.length) addCsvFiles(csvs)
         }
-        panel.addEventListener('paste', onPasteImages)
+        panel.addEventListener('paste', onPasteAttachments)
         composer?.addEventListener('dragover', (e) => {
-          if (imageFilesFromDataTransfer(e.dataTransfer).length) {
+          const images = imageFilesFromDataTransfer(e.dataTransfer)
+          const csvs = csvFilesFromDataTransfer(e.dataTransfer)
+          if (images.length || csvs.length) {
             e.preventDefault()
             composer.classList.add('ai-drag-over')
           }
@@ -1449,7 +1636,7 @@ export default {
         composer?.addEventListener('dragleave', () => composer.classList.remove('ai-drag-over'))
         composer?.addEventListener('drop', (e) => {
           composer.classList.remove('ai-drag-over')
-          onDropImages(e)
+          onDropAttachments(e)
         })
 
         $id('ai_chat_input')?.addEventListener('keydown', (e) => {

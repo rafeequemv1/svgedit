@@ -84,6 +84,7 @@
   "dependencies": {
     "@svgedit/svgcanvas": "7.4.2",
     "browser-fs-access": "0.38.0",
+    "echarts": "^5.6.0",
     "elix": "15.0.1",
     "i18next": "26.3.6",
     "jspdf": "4.2.1",
@@ -92,7 +93,10 @@
     "polygon-clipping": "^0.15.7",
     "svg2pdf.js": "2.7.0",
     "upng-js": "^2.1.0",
-    "utif": "^3.1.0"
+    "utif": "^3.1.0",
+    "vega": "^6.3.1",
+    "vega-embed": "^7.1.0",
+    "vega-lite": "^6.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
