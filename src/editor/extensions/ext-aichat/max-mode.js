@@ -61,10 +61,11 @@ Return ONE JSON object (no markdown fences if possible; if you must fence, use \
 
 Planning rules:
 - Preferred canvas size around ${w}×${h} unless the format needs landscape poster/slide (e.g. 1920×1080 slide, 1200×800 abstract).
-- Use kind="svg" for titles, captions, arrows, boxes, flowcharts, charts, labels, panel frames, connectors — keep each SVG brief SIMPLE (flat shapes + short text; avoid full-scene illustrations in SVG).
-- Use kind="icon" for BioRender-style biological objects (cells, proteins, organs, labware) — single subject, will be transparent cutouts.
-- Use kind="image" sparingly for richer multi-object scenes that are not cutout icons.
-- Prefer 1 background svg, 1 cards/frames svg, 1 arrows svg, 1 captions svg, plus 2–4 icons. Do not ask SVG pieces to render complex 3D chemistry.
+- Use kind="svg" for layout chrome and simple diagrams: background, header/title text, panel frames, arrows, captions/labels. Keep SVG briefs SIMPLE.
+- Use kind="icon" for BioRender-style photographic scientific objects (will be generated AFTER all SVG is placed).
+- Use kind="image" only for large scene art (last).
+- Prefer: 1 background, 1 title, 3 panel frames, labels, then 4–6 icons. Do not put complex chemistry into SVG pieces.
+- Build order the app uses: SVG layout → SVG diagrams → icons → images.
 - Max ${MAX_ITEMS} items total, max ${MAX_ICONS} icon/image items (cost control). Prefer fewer strong pieces.
 - Coordinates are absolute on the canvas; items must not wildly overlap unless intentional layering.
 - Order items back-to-front (background first).
@@ -149,7 +150,7 @@ export function formatPlanForChat (plan) {
     const tag = it.kind === 'icon' ? 'icon' : it.kind === 'image' ? 'image' : 'svg'
     lines.push(`${i + 1}. [${tag}] ${it.id} @ (${it.x},${it.y}) ${it.w}×${it.h} — ${it.prompt.slice(0, 100)}`)
   })
-  lines.push('', 'Building on canvas…')
+  lines.push('', 'Build order: SVG layout → text/frames → icons → images')
   return lines.filter(Boolean).join('\n')
 }
 
@@ -327,25 +328,43 @@ Return ONLY the SVG markup.`
 }
 
 /**
- * Deterministic layout SVG when the model fails (keeps Max mode usable).
+ * Deterministic layout SVG for frames / headers / arrows / labels (no AI needed).
  */
 export function buildStructuralSvgFallback (item) {
   const { w, h, role, prompt, id } = item
   const roleL = String(role || '').toLowerCase()
   const idL = String(id || '').toLowerCase()
-  const title = (prompt || id || 'Panel').split(/[.•\n]/)[0].slice(0, 48)
+  const uid = `m${String(id || 'x').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
+  const title = extractShortTitle(prompt, id)
 
-  if (roleL.includes('background') || idL.includes('bg') || idL.includes('header')) {
+  // Full-canvas or large background + header bar
+  if (roleL.includes('background') || idL.includes('bg') || idL.includes('layout')) {
+    const headerH = Math.min(120, Math.max(72, Math.round(h * 0.14)))
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0f2744"/>
-      <stop offset="55%" stop-color="#f7f9fc"/>
-      <stop offset="100%" stop-color="#ffffff"/>
-    </linearGradient>
-  </defs>
-  <rect width="${w}" height="${h}" fill="url(#bg)"/>
-  <text x="36" y="48" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="700">${escapeXml(title)}</text>
+  <rect width="${w}" height="${h}" fill="#f5f7fa"/>
+  <rect width="${w}" height="${headerH}" fill="#0f2744"/>
+  <text x="40" y="${Math.round(headerH * 0.58)}" fill="#ffffff" font-family="sans-serif" font-size="${Math.min(28, Math.max(18, Math.round(w / 42)))}" font-weight="700">${escapeXml(title)}</text>
+</svg>`
+  }
+
+  // Title / header text banner
+  if (roleL.includes('title') || roleL.includes('header') || idL.includes('header') || idL.includes('title')) {
+    const fs = Math.min(32, Math.max(16, Math.round(Math.min(w, h) / 12)))
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="none"/>
+  <text x="0" y="${Math.round(h * 0.55)}" fill="#ffffff" font-family="sans-serif" font-size="${fs}" font-weight="700">${escapeXml(title)}</text>
+  <text x="0" y="${Math.round(h * 0.85)}" fill="#c5d4e8" font-family="sans-serif" font-size="${Math.max(11, Math.round(fs * 0.45))}">Research poster</text>
+</svg>`
+  }
+
+  // Single panel / card frame
+  if (roleL.includes('frame') || idL.includes('frame') || roleL.includes('panel') || idL.includes('panel')) {
+    const heading = title.length > 40 ? title.slice(0, 40) + '…' : title
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+  <rect x="1" y="1" width="${w - 2}" height="44" rx="14" fill="#f8fafc" stroke="none"/>
+  <rect x="1" y="30" width="${w - 2}" height="16" fill="#f8fafc"/>
+  <text x="18" y="30" fill="#0f2744" font-family="sans-serif" font-size="15" font-weight="700">${escapeXml(heading)}</text>
 </svg>`
   }
 
@@ -353,32 +372,40 @@ export function buildStructuralSvgFallback (item) {
     const mid = Math.round(h / 2)
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
   <defs>
-    <marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+    <marker id="${uid}ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 Z" fill="#0D99FF"/>
     </marker>
   </defs>
-  <line x1="8" y1="${mid}" x2="${Math.round(w / 2 - 20)}" y2="${mid}" stroke="#0D99FF" stroke-width="6" stroke-linecap="round" marker-end="url(#ah)"/>
-  <line x1="${Math.round(w / 2 + 20)}" y1="${mid}" x2="${w - 16}" y2="${mid}" stroke="#0D99FF" stroke-width="6" stroke-linecap="round" marker-end="url(#ah)"/>
+  <line x1="8" y1="${mid}" x2="${w - 16}" y2="${mid}" stroke="#0D99FF" stroke-width="5" stroke-linecap="round" marker-end="url(#${uid}ah)"/>
 </svg>`
   }
 
-  if (roleL.includes('caption') || roleL.includes('label') || idL.includes('caption') || idL.includes('label')) {
-    const lines = String(prompt || '')
-      .split(/(?:Step\s*\d|•|\n|;)/i)
+  if (roleL.includes('caption') || roleL.includes('label') || roleL.includes('annotation') ||
+      idL.includes('caption') || idL.includes('label') || idL.includes('annotation')) {
+    const bullets = String(prompt || '')
+      .split(/(?:•|\n|;|\|\s*|Step\s*\d[:.)]\s*)/i)
       .map((s) => s.replace(/^[^A-Za-z0-9]+/, '').trim())
-      .filter(Boolean)
-      .slice(0, 3)
-    const cols = Math.max(1, lines.length)
-    const colW = w / cols
-    const texts = lines.map((line, i) => {
-      const cx = Math.round(colW * i + colW / 2)
-      return `<text x="${cx}" y="${Math.round(h / 2)}" text-anchor="middle" fill="#1f2937" font-family="sans-serif" font-size="14">${escapeXml(line.slice(0, 70))}</text>`
-    }).join('\n')
-    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">${texts || `<text x="20" y="30" fill="#333" font-family="sans-serif" font-size="14">${escapeXml(title)}</text>`}</svg>`
+      .filter((s) => s.length > 3)
+      .slice(0, 9)
+    const colCount = Math.min(3, Math.max(1, Math.round(bullets.length / 3) || 1))
+    const perCol = Math.ceil(bullets.length / colCount) || 1
+    const colW = w / colCount
+    let texts = ''
+    bullets.forEach((line, i) => {
+      const col = Math.floor(i / perCol)
+      const row = i % perCol
+      const x = Math.round(col * colW + 16)
+      const y = 36 + row * 22
+      texts += `<text x="${x}" y="${y}" fill="#334155" font-family="sans-serif" font-size="12">• ${escapeXml(line.slice(0, 52))}</text>\n`
+    })
+    if (!texts) {
+      texts = `<text x="16" y="28" fill="#334155" font-family="sans-serif" font-size="13">${escapeXml(title)}</text>`
+    }
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">${texts}</svg>`
   }
 
-  // Default: card / panel frame(s)
-  if (roleL.includes('panel') || roleL.includes('card') || idL.includes('card') || idL.includes('step')) {
+  // Multi-card strip
+  if (idL.includes('card') || idL.includes('step_card')) {
     const n = 3
     const gap = 20
     const cw = Math.floor((w - gap * (n + 1)) / n)
@@ -398,6 +425,18 @@ export function buildStructuralSvgFallback (item) {
 </svg>`
 }
 
+function extractShortTitle (prompt, id) {
+  const fromPrompt = String(prompt || '')
+    .replace(/^[^A-Za-z0-9'"]+/, '')
+    .match(/(?:title|banner|heading)[^:]*:\s*['"]?([^.'"\n]+)/i)
+  if (fromPrompt?.[1]) return fromPrompt[1].trim().slice(0, 72)
+  const quoted = String(prompt || '').match(/['"]([^'"]{8,72})['"]/)
+  if (quoted?.[1]) return quoted[1].trim()
+  const first = String(prompt || '').split(/[.•\n]/)[0].trim()
+  if (first.length > 8 && first.length < 80) return first
+  return String(id || 'Panel').replace(/_/g, ' ')
+}
+
 function escapeXml (s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
@@ -406,11 +445,59 @@ function escapeXml (s) {
     .replace(/"/g, '&quot;')
 }
 
+/** Layout chrome that should be drawn immediately as SVG (no model). */
+export function isLayoutStructuralItem (item) {
+  const roleL = String(item.role || '').toLowerCase()
+  const idL = String(item.id || '').toLowerCase()
+  const kind = String(item.kind || '').toLowerCase()
+  if (kind !== 'svg') return false
+  return (
+    roleL.includes('background') || roleL.includes('title') || roleL.includes('header') ||
+    roleL.includes('frame') || roleL.includes('panel') || roleL.includes('caption') ||
+    roleL.includes('label') || roleL.includes('arrow') || roleL.includes('annotation') ||
+    roleL.includes('decoration') ||
+    idL.includes('bg') || idL.includes('layout') || idL.includes('header') || idL.includes('title') ||
+    idL.includes('frame') || idL.includes('panel') || idL.includes('caption') || idL.includes('label') ||
+    idL.includes('arrow') || idL.includes('annotation') || idL.includes('card')
+  )
+}
+
+/**
+ * Build order: layout SVG → other SVG → icons → images
+ */
+export function sortMaxBuildOrder (items) {
+  const phase = (it) => {
+    const kind = String(it.kind || 'svg').toLowerCase()
+    if (kind === 'svg' && isLayoutStructuralItem(it)) {
+      // background first, then frames, then text/labels/arrows
+      const idL = `${it.id} ${it.role}`.toLowerCase()
+      if (idL.includes('bg') || idL.includes('layout') || idL.includes('background')) return 0
+      if (idL.includes('frame') || idL.includes('panel') || idL.includes('card')) return 1
+      if (idL.includes('header') || idL.includes('title')) return 2
+      if (idL.includes('label') || idL.includes('caption') || idL.includes('annotation') || idL.includes('arrow')) return 3
+      return 4
+    }
+    if (kind === 'svg') return 5 // generative SVG icons / diagrams
+    if (kind === 'icon') return 6
+    if (kind === 'image') return 7
+    return 8
+  }
+  return [...items].sort((a, b) => phase(a) - phase(b))
+}
+
 async function generateSvgPiece (apiKey, textModel, item, signal) {
+  // Poster chrome: always local — reliable and instant
+  if (isLayoutStructuralItem(item)) {
+    return {
+      svg: buildStructuralSvgFallback(item),
+      source: 'layout'
+    }
+  }
+
   const systemInstruction = buildSvgPieceSystemPrompt(item, item.role)
-  const userText = `Create a compact SVG (${item.w}×${item.h}) for role="${item.role}".
+  const userText = `Create a compact SVG icon/diagram (${item.w}×${item.h}) for role="${item.role}".
 Brief: ${item.prompt}
-Keep it simple and complete.`
+Keep it simple and complete. Flat scientific illustration style.`
 
   let lastErr = 'No SVG in model reply'
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -442,7 +529,6 @@ Keep it simple and complete.`
     }
   }
 
-  // Structural fallback so the abstract still composes
   return {
     svg: buildStructuralSvgFallback(item),
     source: 'fallback',
@@ -513,14 +599,20 @@ export async function runMaxMode (ctx) {
   /** @type {string[]} */
   const warnings = []
 
-  for (let i = 0; i < plan.items.length; i++) {
+  const buildItems = sortMaxBuildOrder(plan.items)
+  onStep?.(1, `SVG first (${buildItems.filter((x) => x.kind === 'svg').length}), then icons`)
+
+  for (let i = 0; i < buildItems.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    const item = plan.items[i]
+    const item = buildItems[i]
     const guide = guides.get(item.id)
     setGuideState(guide, 'active')
     paint(svgEditor)
-    onStep?.(2, `${i + 1}/${plan.items.length}: ${item.id}`)
-    onItem?.(item, i, plan.items.length)
+    const phaseLabel = item.kind === 'svg'
+      ? (isLayoutStructuralItem(item) ? 'layout SVG' : 'SVG')
+      : item.kind
+    onStep?.(2, `${i + 1}/${buildItems.length} [${phaseLabel}]: ${item.id}`)
+    onItem?.(item, i, buildItems.length)
 
     try {
       if (item.kind === 'icon' || item.kind === 'image') {
@@ -569,7 +661,7 @@ export async function runMaxMode (ctx) {
         const placed = await placeSvgInBox(svgEditor, gen.svg, item, {
           role: item.role,
           signal,
-          stepMs: 24,
+          stepMs: gen.source === 'layout' ? 12 : 24,
           onProgress: (p) => onStep?.(3, `${item.id}: ${p.label}`)
         })
         if (placed.ok) {
@@ -580,7 +672,7 @@ export async function runMaxMode (ctx) {
           failReasons.push(`${item.id}: ${placed.message || 'svg place failed'}`)
         }
         paint(svgEditor)
-        await delay(80, signal)
+        await delay(gen.source === 'layout' ? 40 : 80, signal)
       }
     } catch (err) {
       if (err?.name === 'AbortError') throw err
@@ -588,7 +680,7 @@ export async function runMaxMode (ctx) {
       fails++
       failReasons.push(`${item.id}: ${err?.message || String(err)}`)
       paint(svgEditor)
-      onItem?.(item, i, plan.items.length, err)
+      onItem?.(item, i, buildItems.length, err)
     }
   }
 
