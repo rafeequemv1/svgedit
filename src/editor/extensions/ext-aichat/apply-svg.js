@@ -350,7 +350,7 @@ export function conversationalTextFromReply (text, svg) {
   }
   out = out
     .replace(/```(?:svg|xml)?\s*[\s\S]*?```/gi, '')
-    .replace(/```(?:vega-lite|vega|vl|echarts|echart)\s*[\s\S]*?```/gi, '')
+    .replace(/```(?:vega-lite|vega|vl)\s*[\s\S]*?```/gi, '')
     .replace(/```tools?\s*[\s\S]*?```/gi, '')
     .replace(/<\/?svg\b[\s\S]*$/i, '')
     .replace(/\n{3,}/g, '\n\n')

@@ -20,13 +20,70 @@ async function loadVegaEmbed () {
 }
 
 /**
+ * Scale embedded Vega SVG to fill the preview card without clipping.
  * @param {HTMLElement} host
- * @param {object} spec
  */
-async function renderPreview (host, spec) {
+function fitPreviewSvg (host) {
+  const svg = host.querySelector('svg')
+  if (!svg) return
+
+  let w = parseFloat(svg.getAttribute('width') || '')
+  let h = parseFloat(svg.getAttribute('height') || '')
+  const vb = svg.getAttribute('viewBox')
+  if (vb) {
+    const parts = vb.trim().split(/[\s,]+/).map(Number)
+    if (parts.length === 4) {
+      w = parts[2]
+      h = parts[3]
+    }
+  }
+  if (!w || !h) {
+    try {
+      const box = svg.getBBox()
+      w = box.width
+      h = box.height
+    } catch {
+      return
+    }
+  }
+  if (!w || !h) return
+
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+  svg.removeAttribute('width')
+  svg.removeAttribute('height')
+  svg.style.width = '100%'
+  svg.style.height = '100%'
+  svg.style.display = 'block'
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+
+  const wrap = svg.parentElement
+  if (wrap && wrap !== host) {
+    wrap.style.width = '100%'
+    wrap.style.height = '100%'
+    wrap.style.display = 'flex'
+    wrap.style.alignItems = 'center'
+    wrap.style.justifyContent = 'center'
+    wrap.style.overflow = 'hidden'
+  }
+}
+
+/**
+ * @param {HTMLElement} host
+ * @param {object} baseSpec
+ */
+async function renderPreview (host, baseSpec) {
   if (host.dataset.rendered === '1') return
-  host.dataset.rendered = '1'
-  try {
+
+  const paint = async () => {
+    const w = Math.max(96, Math.round(host.clientWidth || 148))
+    const h = Math.max(72, Math.round(host.clientHeight || 104))
+    const spec = {
+      ...baseSpec,
+      width: w,
+      height: h,
+      autosize: { type: 'fit', contains: 'padding' }
+    }
+    host.replaceChildren()
     const embed = await loadVegaEmbed()
     await embed(host, spec, {
       actions: false,
@@ -34,8 +91,31 @@ async function renderPreview (host, spec) {
       tooltip: false,
       defaultStyle: false
     })
+    fitPreviewSvg(host)
+  }
+
+  try {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await paint()
+    host.dataset.rendered = '1'
+
+    if (typeof ResizeObserver !== 'undefined') {
+      let timer = 0
+      const ro = new ResizeObserver(() => {
+        clearTimeout(timer)
+        timer = window.setTimeout(() => {
+          fitPreviewSvg(host)
+        }, 80)
+      })
+      ro.observe(host)
+      host._previewRo = ro
+    }
   } catch {
-    host.innerHTML = '<span class="ai_chart_preview_fallback">Preview</span>'
+    host.replaceChildren()
+    const fallback = document.createElement('span')
+    fallback.className = 'ai_chart_preview_fallback'
+    fallback.textContent = 'Preview'
+    host.appendChild(fallback)
   }
 }
 
@@ -103,8 +183,26 @@ export function openChartPickerModal (opts) {
     </div>
   `
 
-  const workarea = document.getElementById('workarea') || document.querySelector('.svg_editor')
-  workarea?.appendChild(overlay)
+  const workarea = document.getElementById('workarea')
+  document.body.appendChild(overlay)
+
+  const positionOverlay = () => {
+    const wa = document.getElementById('workarea')
+    if (!wa) return
+    const r = wa.getBoundingClientRect()
+    overlay.style.position = 'fixed'
+    overlay.style.top = `${Math.max(0, r.top)}px`
+    overlay.style.left = `${Math.max(0, r.left)}px`
+    overlay.style.width = `${Math.max(0, r.width)}px`
+    overlay.style.height = `${Math.max(0, r.height)}px`
+    overlay.style.right = 'auto'
+    overlay.style.bottom = 'auto'
+  }
+
+  positionOverlay()
+  const onReposition = () => positionOverlay()
+  window.addEventListener('resize', onReposition)
+  workarea?.addEventListener('scroll', onReposition, { passive: true })
 
   let selectedId = null
   const cards = [...overlay.querySelectorAll('.ai_chart_pick_card')]
@@ -113,6 +211,8 @@ export function openChartPickerModal (opts) {
   const searchInput = overlay.querySelector('#ai_chart_picker_search')
 
   const close = () => {
+    window.removeEventListener('resize', onReposition)
+    workarea?.removeEventListener('scroll', onReposition)
     overlay.remove()
     onClose?.()
   }

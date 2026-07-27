@@ -105,14 +105,40 @@ export function buildChartSpecForCreate (templateId, csvFiles = null) {
 
 /**
  * Compact spec for modal thumbnail preview.
+ * Width/height are applied at render time from the preview card size.
  * @param {string} templateId
  */
 export function buildPreviewSpec (templateId) {
   const spec = buildChartSpecForCreate(templateId, null)
-  spec.width = 168
-  spec.height = 104
   spec.title = null
-  if (spec.config) delete spec.config
+  delete spec.width
+  delete spec.height
+
+  // Faceted layouts overflow small cards — preview the base mark only.
+  if (spec.facet) delete spec.facet
+  if (spec.encoding?.row) delete spec.encoding.row
+  if (spec.encoding?.column) delete spec.encoding.column
+
+  if (templateId === 'arc_donut') {
+    spec.mark = typeof spec.mark === 'object'
+      ? { ...spec.mark, type: 'arc', innerRadius: 28 }
+      : { type: 'arc', innerRadius: 28 }
+  }
+
+  spec.padding = { left: 6, right: 6, top: 6, bottom: 6 }
+  spec.autosize = { type: 'fit', contains: 'padding' }
+  spec.config = {
+    view: { stroke: null },
+    background: 'transparent',
+    axis: {
+      labelFontSize: 7,
+      ticks: false,
+      domain: false,
+      labelPadding: 2,
+      labelLimit: 32
+    },
+    legend: { disable: true }
+  }
   return spec
 }
 

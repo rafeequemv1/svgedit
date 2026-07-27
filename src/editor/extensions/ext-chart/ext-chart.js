@@ -5,12 +5,21 @@
 import {
   findChartGroup,
   readPlotSpec,
-  getTitle,
-  setTitle,
   specColumnNames,
   rerenderChartGroup
 } from './chart-spec.js'
 import { buildMarkTypeSelectHtml, guessTemplateIdFromSpec, buildTemplateSpec } from './chart-templates.js'
+import {
+  COLOR_SCHEMES,
+  applyControlValues,
+  bindColorPair,
+  bindRangeNumber,
+  colorFieldHtml,
+  encodingField,
+  hasColorField,
+  rangeFieldHtml,
+  readControlValues
+} from './chart-controls.js'
 
 const name = 'chart'
 
@@ -26,17 +35,6 @@ const loadExtensionTranslation = async function (svgEditor) {
 }
 
 const t = (svgEditor, key) => svgEditor.i18next.t(`${name}:${key}`)
-
-/**
- * @param {object} spec
- */
-function encodingField (spec, channel) {
-  const enc = spec?.encoding?.[channel]
-  if (!enc) return ''
-  if (typeof enc.field === 'string') return enc.field
-  if (Array.isArray(enc)) return enc[0]?.field || ''
-  return ''
-}
 
 export default {
   name,
@@ -73,35 +71,94 @@ export default {
       })
     }
 
+    const setRangeNumber = (baseId, value) => {
+      const num = $id(baseId)
+      const range = $id(`${baseId}_range`)
+      if (num) num.value = String(value)
+      if (range) range.value = String(value)
+    }
+
+    const setColorPair = (baseId, value) => {
+      const text = $id(baseId)
+      const picker = $id(`${baseId}_picker`)
+      if (text) text.value = value || ''
+      if (picker && value) picker.value = value
+    }
+
+    const toggleColorMode = (spec) => {
+      const fixedWrap = $id('chart_fixed_color_wrap')
+      const schemeWrap = $id('chart_scheme_wrap')
+      const useScheme = hasColorField(spec)
+      if (fixedWrap) fixedWrap.style.display = useScheme ? 'none' : ''
+      if (schemeWrap) schemeWrap.style.display = useScheme ? '' : 'none'
+    }
+
     const syncPanelFromGroup = (group) => {
       activeGroup = group
       const spec = readPlotSpec(group)
-      const markSel = $id('chart_mark_type')
-      const titleIn = $id('chart_title')
-      const xSel = $id('chart_x_field')
-      const ySel = $id('chart_y_field')
-      const colorSel = $id('chart_color_field')
-      const wIn = $id('chart_width')
-      const hIn = $id('chart_height')
       if (!spec) {
         showPanel(false)
         return
       }
       showPanel(true)
+
+      const vals = readControlValues(spec)
       const tplId = guessTemplateIdFromSpec(spec)
-      if (markSel) markSel.value = tplId
-      if (titleIn) titleIn.value = getTitle(spec)
       const cols = specColumnNames(spec)
-      fillSelect(xSel, cols, encodingField(spec, 'x') || encodingField(spec, 'theta'))
-      fillSelect(ySel, cols, encodingField(spec, 'y'))
-      fillSelect(colorSel, cols, encodingField(spec, 'color'))
-      if (wIn) wIn.value = String(spec.width || 480)
-      if (hIn) hIn.value = String(spec.height || 300)
+
+      if ($id('chart_mark_type')) $id('chart_mark_type').value = tplId
+      if ($id('chart_title')) $id('chart_title').value = vals.title
+      fillSelect($id('chart_x_field'), cols, encodingField(spec, 'x') || encodingField(spec, 'theta'))
+      fillSelect($id('chart_y_field'), cols, encodingField(spec, 'y'))
+      fillSelect($id('chart_color_field'), cols, encodingField(spec, 'color'))
+      fillSelect($id('chart_size_field'), cols, encodingField(spec, 'size'))
+
+      setRangeNumber('chart_width', vals.width)
+      setRangeNumber('chart_height', vals.height)
+      setRangeNumber('chart_opacity', vals.opacity)
+      setRangeNumber('chart_stroke_width', vals.strokeWidth)
+      setRangeNumber('chart_point_size', vals.pointSize)
+      setRangeNumber('chart_inner_radius', vals.innerRadius)
+      setRangeNumber('chart_padding', vals.padding)
+
+      setColorPair('chart_mark_fill', vals.markFill)
+      setColorPair('chart_mark_stroke', vals.markStroke)
+      setColorPair('chart_bg_color', vals.background)
+      setColorPair('chart_axis_label_color', vals.axisLabel)
+      setColorPair('chart_axis_grid_color', vals.axisGrid)
+      setColorPair('chart_title_color', vals.titleColor)
+
+      if ($id('chart_color_scheme')) $id('chart_color_scheme').value = vals.colorScheme
+      if ($id('chart_show_legend')) $id('chart_show_legend').checked = vals.showLegend
+      if ($id('chart_legend_orient')) $id('chart_legend_orient').value = vals.legendOrient
+
+      toggleColorMode(spec)
     }
+
+    const readPanelValues = () => ({
+      title: ($id('chart_title')?.value || '').trim(),
+      width: Number($id('chart_width')?.value),
+      height: Number($id('chart_height')?.value),
+      opacity: Number($id('chart_opacity')?.value),
+      strokeWidth: Number($id('chart_stroke_width')?.value),
+      pointSize: Number($id('chart_point_size')?.value),
+      innerRadius: Number($id('chart_inner_radius')?.value),
+      padding: Number($id('chart_padding')?.value),
+      markFill: $id('chart_mark_fill')?.value || '',
+      markStroke: $id('chart_mark_stroke')?.value || '',
+      background: $id('chart_bg_color')?.value || '',
+      axisLabel: $id('chart_axis_label_color')?.value || '',
+      axisGrid: $id('chart_axis_grid_color')?.value || '',
+      titleColor: $id('chart_title_color')?.value || '',
+      colorScheme: $id('chart_color_scheme')?.value || 'category10',
+      showLegend: !!$id('chart_show_legend')?.checked,
+      legendOrient: $id('chart_legend_orient')?.value || 'right'
+    })
 
     const readPanelToSpec = () => {
       const spec = readPlotSpec(activeGroup)
       if (!spec) return null
+
       const tplId = $id('chart_mark_type')?.value || 'bar'
       const cols = specColumnNames(spec)
       let next = tplId === guessTemplateIdFromSpec(spec)
@@ -110,23 +167,34 @@ export default {
       if (!next.data?.values?.length && spec.data?.values?.length) {
         next.data = { values: spec.data.values }
       }
-      next = setTitle(next, ($id('chart_title')?.value || '').trim() || getTitle(spec))
+
       const x = $id('chart_x_field')?.value
       const y = $id('chart_y_field')?.value
       const color = $id('chart_color_field')?.value
+      const size = $id('chart_size_field')?.value
+
       if (x) {
         if (next.encoding?.x) next.encoding.x.field = x
-        else if (next.encoding?.theta) next.encoding.color = { field: x, type: 'nominal' }
+        else if (next.encoding?.theta) next.encoding.theta = { field: x, type: 'nominal' }
       }
       if (y) {
         if (next.encoding?.y) next.encoding.y.field = y
         else if (next.encoding?.theta) next.encoding.theta = { field: y, type: 'quantitative' }
       }
-      if (color && next.encoding?.color) next.encoding.color.field = color
-      const w = Number($id('chart_width')?.value)
-      const h = Number($id('chart_height')?.value)
-      if (Number.isFinite(w) && w > 0) next.width = w
-      if (Number.isFinite(h) && h > 0) next.height = h
+      if (color) {
+        if (!next.encoding) next.encoding = {}
+        next.encoding.color = { field: color, type: 'nominal' }
+      } else if (next.encoding?.color?.field) {
+        delete next.encoding.color
+      }
+      if (size) {
+        if (!next.encoding) next.encoding = {}
+        next.encoding.size = { field: size, type: 'quantitative' }
+      } else if (next.encoding?.size?.field) {
+        delete next.encoding.size
+      }
+
+      next = applyControlValues(next, readPanelValues())
       return next
     }
 
@@ -139,6 +207,7 @@ export default {
         busy = true
         try {
           await rerenderChartGroup(svgEditor, activeGroup, spec)
+          toggleColorMode(spec)
         } catch (err) {
           console.warn('Chart rerender failed', err)
         } finally {
@@ -147,15 +216,12 @@ export default {
       }, 280)
     }
 
-    const openChartTab = () => {
-      svgEditor.rightPanel?.switchTab?.('charts')
-    }
+    const schemeOptions = COLOR_SCHEMES.map((s) => `<option value="${s}">${s}</option>`).join('')
 
     return {
       name: t(svgEditor, 'name'),
       callback () {
         const markOptions = buildMarkTypeSelectHtml()
-
         const host = $id('right_charts_extensions') || $id('right_properties_extensions')
         if (!host) return
 
@@ -164,7 +230,7 @@ export default {
         wrap.innerHTML = `
           <p id="chart_panel_hint" class="right_panel_hint">${t(svgEditor, 'panelHint')}</p>
           <div id="chart_panel" class="chart_panel prop-section" style="display:none">
-            <div class="prop-header">${t(svgEditor, 'panelTitle')}</div>
+            <div class="prop-header">${t(svgEditor, 'sectionData')}</div>
             <label class="ai_field">
               <span>${t(svgEditor, 'markType')}</span>
               <select id="chart_mark_type">${markOptions}</select>
@@ -185,16 +251,56 @@ export default {
               <span>${t(svgEditor, 'colorField')}</span>
               <select id="chart_color_field"></select>
             </label>
+            <label class="ai_field">
+              <span>${t(svgEditor, 'sizeField')}</span>
+              <select id="chart_size_field"></select>
+            </label>
+
+            <div class="prop-header">${t(svgEditor, 'sectionDimensions')}</div>
             <div class="prop-row prop-row-2">
+              ${rangeFieldHtml('chart_width', t(svgEditor, 'width'), 120, 1200, 10, 480)}
+              ${rangeFieldHtml('chart_height', t(svgEditor, 'height'), 100, 1200, 10, 300)}
+            </div>
+            ${rangeFieldHtml('chart_padding', t(svgEditor, 'padding'), 0, 80, 2, 20)}
+
+            <div class="prop-header">${t(svgEditor, 'sectionMark')}</div>
+            ${rangeFieldHtml('chart_opacity', t(svgEditor, 'opacity'), 0, 1, 0.05, 1)}
+            ${rangeFieldHtml('chart_stroke_width', t(svgEditor, 'strokeWidth'), 0, 12, 0.5, 1)}
+            ${rangeFieldHtml('chart_point_size', t(svgEditor, 'pointSize'), 10, 600, 5, 80)}
+            ${rangeFieldHtml('chart_inner_radius', t(svgEditor, 'innerRadius'), 0, 120, 2, 0)}
+
+            <div class="prop-header">${t(svgEditor, 'sectionColors')}</div>
+            <div id="chart_fixed_color_wrap">
+              ${colorFieldHtml('chart_mark_fill', t(svgEditor, 'markFill'), '#4c78a8')}
+            </div>
+            <div id="chart_scheme_wrap" style="display:none">
               <label class="ai_field">
-                <span>${t(svgEditor, 'width')}</span>
-                <input type="number" id="chart_width" min="120" max="2000" step="10" />
-              </label>
-              <label class="ai_field">
-                <span>${t(svgEditor, 'height')}</span>
-                <input type="number" id="chart_height" min="100" max="2000" step="10" />
+                <span>${t(svgEditor, 'colorScheme')}</span>
+                <select id="chart_color_scheme">${schemeOptions}</select>
               </label>
             </div>
+            ${colorFieldHtml('chart_mark_stroke', t(svgEditor, 'markStroke'), '#000000')}
+            ${colorFieldHtml('chart_bg_color', t(svgEditor, 'background'), '#ffffff')}
+            ${colorFieldHtml('chart_axis_label_color', t(svgEditor, 'axisLabelColor'), '#666666')}
+            ${colorFieldHtml('chart_axis_grid_color', t(svgEditor, 'axisGridColor'), '#dddddd')}
+            ${colorFieldHtml('chart_title_color', t(svgEditor, 'titleColor'), '#333333')}
+
+            <div class="prop-header">${t(svgEditor, 'sectionLegend')}</div>
+            <label class="ai_check">
+              <input type="checkbox" id="chart_show_legend" checked />
+              <span>${t(svgEditor, 'showLegend')}</span>
+            </label>
+            <label class="ai_field">
+              <span>${t(svgEditor, 'legendPosition')}</span>
+              <select id="chart_legend_orient">
+                <option value="right">right</option>
+                <option value="left">left</option>
+                <option value="top">top</option>
+                <option value="bottom">bottom</option>
+                <option value="none">none</option>
+              </select>
+            </label>
+
             <div class="ai_row">
               <button type="button" id="chart_apply_btn" class="ai_btn secondary">${t(svgEditor, 'apply')}</button>
               <button type="button" id="chart_ask_ai_btn" class="ai_btn secondary">${t(svgEditor, 'askAi')}</button>
@@ -203,13 +309,44 @@ export default {
         `
         host.appendChild(wrap)
 
-        ;['chart_mark_type', 'chart_x_field', 'chart_y_field', 'chart_color_field'].forEach((id) => {
-          $id(id)?.addEventListener('change', scheduleRerender)
+        const onChange = () => scheduleRerender()
+
+        ;[
+          'chart_mark_type', 'chart_x_field', 'chart_y_field',
+          'chart_color_field', 'chart_size_field', 'chart_color_scheme',
+          'chart_legend_orient'
+        ].forEach((id) => {
+          $id(id)?.addEventListener('change', () => {
+            if (id === 'chart_color_field') {
+              const spec = readPanelToSpec()
+              if (spec) toggleColorMode(spec)
+            }
+            onChange()
+          })
         })
-        ;['chart_title', 'chart_width', 'chart_height'].forEach((id) => {
-          $id(id)?.addEventListener('input', scheduleRerender)
+
+        ;['chart_title', 'chart_show_legend'].forEach((id) => {
+          const el = $id(id)
+          el?.addEventListener('input', onChange)
+          el?.addEventListener('change', onChange)
         })
-        $id('chart_apply_btn')?.addEventListener('click', () => scheduleRerender())
+
+        bindRangeNumber($id('chart_width_range'), $id('chart_width'), onChange)
+        bindRangeNumber($id('chart_height_range'), $id('chart_height'), onChange)
+        bindRangeNumber($id('chart_padding_range'), $id('chart_padding'), onChange)
+        bindRangeNumber($id('chart_opacity_range'), $id('chart_opacity'), onChange)
+        bindRangeNumber($id('chart_stroke_width_range'), $id('chart_stroke_width'), onChange)
+        bindRangeNumber($id('chart_point_size_range'), $id('chart_point_size'), onChange)
+        bindRangeNumber($id('chart_inner_radius_range'), $id('chart_inner_radius'), onChange)
+
+        bindColorPair($id('chart_mark_fill_picker'), $id('chart_mark_fill'), onChange)
+        bindColorPair($id('chart_mark_stroke_picker'), $id('chart_mark_stroke'), onChange)
+        bindColorPair($id('chart_bg_color_picker'), $id('chart_bg_color'), onChange)
+        bindColorPair($id('chart_axis_label_color_picker'), $id('chart_axis_label_color'), onChange)
+        bindColorPair($id('chart_axis_grid_color_picker'), $id('chart_axis_grid_color'), onChange)
+        bindColorPair($id('chart_title_color_picker'), $id('chart_title_color'), onChange)
+
+        $id('chart_apply_btn')?.addEventListener('click', onChange)
         $id('chart_ask_ai_btn')?.addEventListener('click', () => {
           const editCb = $id('ai_edit_selection')
           if (editCb) editCb.checked = true
@@ -238,7 +375,7 @@ export default {
           return
         }
         syncPanelFromGroup(group)
-        openChartTab()
+        svgEditor.rightPanel?.switchTab?.('charts')
       },
       elementChanged () {
         if (activeGroup && !activeGroup.parentNode) {
