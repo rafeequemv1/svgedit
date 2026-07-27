@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 51.04 49.47">
+  <defs>
+    <style>
+      .bounds { fill: none; }
+      .chain { fill: none; stroke: #38bdf8; stroke-width: 1.6; stroke-linecap: round; opacity: 0.9; }
+      .node { fill: #ec4899; }
+      .dot { fill: #f59e0b; }
+    </style>
+  </defs>
+  <rect class="bounds" width="51.04" height="49.47"/>
+  <path class="chain" d="M10,28 C14,18 18,36 22,24 C26,12 30,34 34,22 C38,14 42,30 46,26"/>
+  <path class="chain" d="M12,34 C16,24 20,40 26,30 C32,18 36,38 44,32"/>
+  <circle class="node" cx="22" cy="24" r="2.2"/>
+  <circle class="node" cx="34" cy="22" r="2.2"/>
+  <circle class="dot" cx="28" cy="31" r="2"/>
+  <circle class="dot" cx="18" cy="30" r="1.6"/>
+</svg>

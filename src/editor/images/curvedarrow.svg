@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 51.04 49.47">
+  <defs>
+    <style>
+      .bounds { fill: none; }
+      .arc { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; }
+      .head { fill: #f9ba00; stroke: #f9ba00; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <rect class="bounds" width="51.04" height="49.47"/>
+  <path class="arc" d="M8,36 A22 22 0 0 1 36,10"/>
+  <polygon class="head" points="36,10 28,8 31,16"/>
+</svg>

@@ -21,6 +21,23 @@ class TopPanel {
   }
 
   /**
+   * True when the element (or an ancestor group) is a generator/brush
+   * created by an extension (`shape="dna"|hydrogel|…`).
+   * @param {Element|null|undefined} el
+   * @returns {boolean}
+   */
+  isExtensionBrush (el) {
+    let cur = el
+    while (cur && cur.nodeType === 1) {
+      const shape = cur.getAttribute?.('shape')
+      if (shape) return true
+      if (cur.tagName === 'svg' || cur.id === 'svgcontent') break
+      cur = cur.parentNode
+    }
+    return false
+  }
+
+  /**
    * @type {module}
    */
   displayTool (className) {
@@ -161,7 +178,7 @@ class TopPanel {
   /**
    * @param {PlainObject} [opts={}]
    * @param {boolean} [opts.cancelDeletes=false]
-   * @returns {void} Resolves to `undefined`
+   * @returns {void}
    */
   promptImgURL ({ cancelDeletes = false } = {}) {
     let curhref = this.editor.svgCanvas.getHref(this.editor.selectedElement)
@@ -175,6 +192,86 @@ class TopPanel {
     } else if (cancelDeletes) {
       this.editor.svgCanvas.deleteSelectedElements()
     }
+  }
+
+  /**
+   * Open the local file picker for the selected (or new) image element.
+   * @param {PlainObject} [opts={}]
+   * @param {Function} [opts.onCancel]
+   * @returns {void}
+   */
+  openLocalImagePicker ({ onCancel = null } = {}) {
+    if (!this._imgFileInput) {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*,.svg'
+      input.style.display = 'none'
+      input.addEventListener('change', () => {
+        const file = input.files?.[0]
+        input.value = ''
+        const cancel = this._imgPickerOnCancel
+        this._imgPickerOnCancel = null
+        if (!file) {
+          cancel?.()
+          return
+        }
+        this.applyLocalImageFile(file, cancel)
+      })
+      document.body.append(input)
+      this._imgFileInput = input
+    }
+
+    this._imgPickerOnCancel = onCancel
+    const onWindowFocus = () => {
+      window.removeEventListener('focus', onWindowFocus)
+      setTimeout(() => {
+        if (this._imgPickerOnCancel && !this._imgFileInput.files?.length) {
+          const cancel = this._imgPickerOnCancel
+          this._imgPickerOnCancel = null
+          cancel?.()
+        }
+      }, 400)
+    }
+    window.addEventListener('focus', onWindowFocus)
+    this._imgFileInput.click()
+  }
+
+  /**
+   * @param {File} file
+   * @param {Function|null} onCancel
+   * @returns {void}
+   */
+  applyLocalImageFile (file, onCancel = null) {
+    const isImage = file.type.startsWith('image/') || /\.svg$/i.test(file.name)
+    if (!isImage) {
+      seAlert(this.editor.i18next.t('notification.invalidImageFile'))
+      onCancel?.()
+      return
+    }
+    const reader = new FileReader()
+    reader.onloadend = (ev) => {
+      const result = ev.target?.result
+      if (typeof result === 'string') {
+        this.setImageURL(result)
+        this.editor.svgCanvas.setGoodImage(result)
+      } else {
+        onCancel?.()
+      }
+    }
+    reader.onerror = () => onCancel?.()
+    reader.readAsDataURL(file)
+  }
+
+  /**
+   * Prefer a local file; fall back to URL entry.
+   * @param {PlainObject} [opts={}]
+   * @param {boolean} [opts.cancelDeletes=false]
+   * @returns {void}
+   */
+  promptImgSource ({ cancelDeletes = false } = {}) {
+    this.openLocalImagePicker({
+      onCancel: () => this.promptImgURL({ cancelDeletes })
+    })
   }
 
   /**
@@ -199,9 +296,12 @@ class TopPanel {
     const isNode = currentMode === 'pathedit'
     const menuItems = document.getElementById('se-cmenu_canvas')
     this.hideTool('selected_panel')
-    this.hideTool('multiselected_panel')
+    this.hideTool('multiselected_actions_panel')
+    this.hideTool('align_single_panel')
+    this.hideTool('align_multi_panel')
     this.hideTool('g_panel')
     this.hideTool('rect_panel')
+    this.hideTool('corner_radius_panel')
     this.hideTool('circle_panel')
     this.hideTool('ellipse_panel')
     this.hideTool('line_panel')
@@ -226,11 +326,17 @@ class TopPanel {
         this.editor.svgCanvas.getMode() === 'image' &&
         !this.editor.svgCanvas.getHref(elem).startsWith('data:')
       ) {
-        /* await */ this.promptImgURL({ cancelDeletes: true })
+        /* await */ this.promptImgSource({ cancelDeletes: true })
       }
 
       if (!isNode && currentMode !== 'pathedit') {
+        // Generators / brushes: only their extension panel (opened in selectedChanged)
+        if (this.isExtensionBrush(elem)) {
+          this.editor.rightPanel?.switchTab?.('properties')
+          return
+        }
         this.displayTool('selected_panel')
+        this.displayTool('align_single_panel')
         // Elements in this array already have coord fields
         if (['line', 'circle', 'ellipse', 'polygon'].includes(elname)) {
           this.hideTool('xy_panel')
@@ -318,7 +424,7 @@ class TopPanel {
       const panels = {
         g: [],
         a: [],
-        rect: ['rx', 'width', 'height'],
+        rect: ['width', 'height'],
         image: ['width', 'height'],
         circle: ['cx', 'cy', 'r'],
         ellipse: ['cx', 'cy', 'rx', 'ry'],
@@ -358,6 +464,19 @@ class TopPanel {
         this.hideTool('tool_make_link_multi')
       }
 
+      if (
+        this.editor.svgCanvas.supportsCornerRadius?.(elem) ||
+        tagName === 'rect' ||
+        tagName === 'polygon' ||
+        (tagName === 'path' && elem.hasAttribute('data-corner-points'))
+      ) {
+        this.displayTool('corner_radius_panel')
+        $id('rect_rx').value = this.editor.svgCanvas.getCornerRadius?.() ??
+          (Number(elem.getAttribute('rx')) ||
+            Number(elem.getAttribute('data-corner-radius')) ||
+            0)
+      }
+
       if (panels[tagName]) {
         const curPanel = panels[tagName]
         this.displayTool(tagName + '_panel')
@@ -382,10 +501,13 @@ class TopPanel {
           $id('tool_text_decoration_overline').pressed =
             this.editor.svgCanvas.hasTextDecoration('overline')
           $id('tool_font_family').value = elem.getAttribute('font-family')
-          $id('tool_text_anchor').setAttribute(
-            'value',
-            elem.getAttribute('text-anchor')
-          )
+          const textAnchor = elem.getAttribute('text-anchor') || 'middle'
+          $id('tool_text_align_left').pressed = textAnchor === 'start'
+          $id('tool_text_align_center').pressed = textAnchor === 'middle'
+          $id('tool_text_align_right').pressed = textAnchor === 'end'
+          const baselineShift = this.editor.svgCanvas.getBaselineShift()
+          $id('tool_text_superscript').pressed = baselineShift === 'super'
+          $id('tool_text_subscript').pressed = baselineShift === 'sub'
           $id('font_size').value = elem.getAttribute('font-size')
           $id('tool_letter_spacing').value =
             elem.getAttribute('letter-spacing') ?? 0
@@ -394,7 +516,7 @@ class TopPanel {
           $id('tool_text_length').value = elem.getAttribute('textLength') ?? 0
           $id('tool_length_adjust').value =
             elem.getAttribute('lengthAdjust') ?? 0
-          $id('text').value = elem.textContent
+          $id('text').value = this.editor.svgCanvas.getText()
           if (this.editor.svgCanvas.addedNew) {
             // Timeout needed for IE9
             setTimeout(() => {
@@ -438,13 +560,14 @@ class TopPanel {
         this.displayTool('text_panel')
       }
 
-      this.displayTool('multiselected_panel')
+      this.displayTool('multiselected_actions_panel')
+      this.displayTool('align_multi_panel')
       menuItems.setAttribute('enablemenuitems', '#group')
       menuItems.setAttribute('disablemenuitems', '#ungroup')
     } else {
       menuItems.setAttribute(
         'disablemenuitems',
-        '#delete,#cut,#copy,#group,#ungroup,#move_front,#move_up,#move_down,#move_back'
+        '#delete,#cut,#copy,#duplicate,#group,#ungroup,#move_front,#move_up,#move_down,#move_back'
       )
     }
 
@@ -466,7 +589,7 @@ class TopPanel {
       const canCMenu = document.getElementById('se-cmenu_canvas')
       canCMenu.setAttribute(
         'enablemenuitems',
-        '#delete,#cut,#copy,#move_front,#move_up,#move_down,#move_back'
+        '#delete,#cut,#copy,#duplicate,#move_front,#move_up,#move_down,#move_back'
       )
     } else {
       $id('selLayerNames').setAttribute('disabled', 'disabled')
@@ -839,10 +962,24 @@ class TopPanel {
   /**
    * Sets the text anchor value
    *
+   * @param {'start'|'middle'|'end'} value
    * @returns {false}
    */
-  clickTextAnchor (evt) {
-    this.editor.svgCanvas.setTextAnchor(evt.detail.value)
+  clickTextAnchor (value) {
+    this.editor.svgCanvas.setTextAnchor(value)
+    this.updateContextPanel()
+    return false
+  }
+
+  /**
+   * Toggle superscript / subscript on selected text
+   *
+   * @param {'super'|'sub'} value
+   * @returns {false}
+   */
+  clickBaselineShift (value) {
+    this.editor.svgCanvas.setBaselineShift(value)
+    this.updateContextPanel()
     return false
   }
 
@@ -1024,9 +1161,27 @@ class TopPanel {
     $click($id('tool_text_decoration_overline'), () =>
       this.clickTextDecoration.bind(this)('overline')
     )
-    $id('tool_text_anchor').addEventListener('change', evt =>
-      this.clickTextAnchor.bind(this)(evt)
+    $click($id('tool_text_align_left'), () =>
+      this.clickTextAnchor.bind(this)('start')
     )
+    $click($id('tool_text_align_center'), () =>
+      this.clickTextAnchor.bind(this)('middle')
+    )
+    $click($id('tool_text_align_right'), () =>
+      this.clickTextAnchor.bind(this)('end')
+    )
+    $click($id('tool_text_superscript'), () =>
+      this.clickBaselineShift.bind(this)('super')
+    )
+    $click($id('tool_text_subscript'), () =>
+      this.clickBaselineShift.bind(this)('sub')
+    )
+    // Keep text selection when clicking script buttons
+    ;['tool_text_superscript', 'tool_text_subscript'].forEach((id) => {
+      $id(id).addEventListener('mousedown', (evt) => {
+        evt.preventDefault()
+      })
+    })
     $id('tool_letter_spacing').addEventListener(
       'change',
       this.changeLetterSpacing.bind(this)
@@ -1043,6 +1198,9 @@ class TopPanel {
       this.changeLengthAdjust.bind(this)(evt)
     )
     $click($id('tool_unlink_use'), this.clickGroup.bind(this))
+    $click($id('tool_image_upload'), () => {
+      this.openLocalImagePicker()
+    })
     $id('image_url').addEventListener('change', evt => {
       this.setImageURL(evt.currentTarget.value)
     })

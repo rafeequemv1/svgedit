@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import dynamicImportVars from '@rollup/plugin-dynamic-import-vars'
 import string from 'vite-plugin-string'
 import istanbul from 'vite-plugin-istanbul'
+import { geminiProxyPlugin } from './vite-plugin-gemini-proxy.mjs'
 
 const editorEntries = [
   resolve(__dirname, 'src/editor/index.html'),
@@ -36,6 +37,7 @@ export default defineConfig({
     strictPort: true
   },
   plugins: [
+    geminiProxyPlugin(),
     {
       name: 'svgedit-skip-vite-build-html',
       apply: 'build',

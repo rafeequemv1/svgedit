@@ -27,13 +27,14 @@ class LeftPanel {
    * @returns {boolean} Whether the button was disabled or not
    */
   updateLeftPanel (button) {
-    if (button.disabled) return false
+    const el = typeof button === 'string' ? $id(button) : button
+    if (!el || el.disabled) return false
     // remove the pressed state on other(s) button(s)
     $qa('#tools_left *[pressed]').forEach((b) => {
       b.pressed = false
     })
     // pressed state for the clicked button
-    $id(button).pressed = true
+    el.pressed = true
     return true
   }
 
@@ -51,10 +52,25 @@ class LeftPanel {
   }
 
   /**
+   * Ensure stroke paint exists so stroke-only tools (pencil, line) can draw.
+   * @returns {void}
+   * @private
+   */
+  #ensureStrokePaint () {
+    if (this.editor.svgCanvas.getColor('stroke') !== 'none') return
+    this.editor.svgCanvas.setColor('stroke', '#000000')
+    // Keep bottom palette UI in sync when present
+    try {
+      this.editor.bottomPanel?.updateToolButtonState?.()
+    } catch (_) { /* ignore */ }
+  }
+
+  /**
    *
    * @returns {void}
    */
   clickFHPath () {
+    this.#ensureStrokePaint()
     if (this.updateLeftPanel('tool_fhpath')) {
       this.editor.svgCanvas.setMode('fhpath')
     }
@@ -65,6 +81,7 @@ class LeftPanel {
    * @returns {void}
    */
   clickLine () {
+    this.#ensureStrokePaint()
     if (this.updateLeftPanel('tool_line')) {
       this.editor.svgCanvas.setMode('line')
     }

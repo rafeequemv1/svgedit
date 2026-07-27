@@ -275,6 +275,10 @@ export const recalculateDimensions = selected => {
       initial = {}
       initial.d = selected.getAttribute('d')
       changes.d = selected.getAttribute('d')
+      // Undo must restore Live Corner vertices with the path geometry
+      if (selected.hasAttribute('data-corner-points')) {
+        initial['data-corner-points'] = selected.getAttribute('data-corner-points')
+      }
       break
   }
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Union: two overlapping squares as one silhouette -->
+  <path fill="#fff" d="M3 7h9v4h4v9H7v-4H3V7z"/>
+  <path fill="#f9ba00" d="M12 3h9v9h-4V7h-5V3z"/>
+  <path fill="#fff" fill-opacity=".35" d="M12 7h4v4h-4z"/>
+</svg>

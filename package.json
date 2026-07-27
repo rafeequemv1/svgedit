@@ -87,8 +87,12 @@
     "elix": "15.0.1",
     "i18next": "26.3.6",
     "jspdf": "4.2.1",
+    "pako": "^2.2.0",
     "pathseg": "1.2.1",
-    "svg2pdf.js": "2.7.0"
+    "polygon-clipping": "^0.15.7",
+    "svg2pdf.js": "2.7.0",
+    "upng-js": "^2.1.0",
+    "utif": "^3.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

@@ -9,6 +9,7 @@
 import { NS } from './namespaces.js'
 import { getHref, setHref, getRotationAngle, getBBox } from './utilities.js'
 import { getTransformList, transformListToTransform, transformPoint } from './math.js'
+import { setTextElementContent, serializeTextElement } from './text-content.js'
 
 // Attributes that affect an element's bounding box. Only these require
 // recalculating the rotation center when changed.
@@ -358,7 +359,7 @@ export class ChangeElementCommand extends Command {
     this.oldValues = attrs
     for (const attr in attrs) {
       if (attr === '#text') {
-        this.newValues[attr] = (elem) ? elem.textContent : ''
+        this.newValues[attr] = (elem) ? serializeTextElement(elem) : ''
       } else if (attr === '#href') {
         this.newValues[attr] = getHref(elem)
       } else {
@@ -379,7 +380,7 @@ export class ChangeElementCommand extends Command {
       Object.entries(this.newValues).forEach(([attr, value]) => {
         const isNullishOrEmpty = value === null || value === undefined || value === ''
         if (attr === '#text') {
-          this.elem.textContent = value === null || value === undefined ? '' : String(value)
+          setTextElementContent(this.elem, value === null || value === undefined ? '' : String(value))
         } else if (attr === '#href') {
           if (isNullishOrEmpty) {
             this.elem.removeAttribute('href')
@@ -416,7 +417,7 @@ export class ChangeElementCommand extends Command {
       Object.entries(this.oldValues).forEach(([attr, value]) => {
         const isNullishOrEmpty = value === null || value === undefined || value === ''
         if (attr === '#text') {
-          this.elem.textContent = value === null || value === undefined ? '' : String(value)
+          setTextElementContent(this.elem, value === null || value === undefined ? '' : String(value))
         } else if (attr === '#href') {
           if (isNullishOrEmpty) {
             this.elem.removeAttribute('href')
@@ -638,7 +639,9 @@ export class UndoManager {
       const elem = elems[i]
       if (!elem) { continue }
       elements[i] = elem
-      oldValues[i] = elem.getAttribute(attrName)
+      oldValues[i] = attrName === '#text'
+        ? serializeTextElement(elem)
+        : elem.getAttribute(attrName)
     }
     this.undoableChangeStack[p] = {
       attrName,
@@ -664,7 +667,10 @@ export class UndoManager {
       if (!elem) { continue }
       const changes = {}
       changes[attrName] = changeset.oldValues[i]
-      if (changes[attrName] !== elem.getAttribute(attrName)) {
+      const current = attrName === '#text'
+        ? serializeTextElement(elem)
+        : elem.getAttribute(attrName)
+      if (changes[attrName] !== current) {
         batchCmd.addSubCommand(new ChangeElementCommand(elem, changes, attrName))
       }
     }

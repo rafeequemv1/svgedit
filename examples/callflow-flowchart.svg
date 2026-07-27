@@ -1,0 +1,369 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="920" viewBox="0 0 1480 920">
+  <title>Support Call Routing Flowchart</title>
+  <desc>Detailed flowchart with containers, numbered nodes, decisions, and terminal pipeline</desc>
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="1480" height="920" fill="#0a0a0a"/>
+  <text x="36" y="28" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="14" font-weight="700" fill="#94a3b8">Support Call Routing — Detailed Flowchart</text>
+  <g id="container-existing">
+  <rect x="200" y="36" width="720" height="210" rx="4" ry="4"
+        fill="rgba(15,23,42,0.35)" stroke="#3b82f6" stroke-width="1.5"/>
+  <g class="badge">
+  <rect x="207" y="43" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="216" y="55" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">2</text>
+</g>
+  <text x="232" y="56" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="700" fill="#3b82f6" letter-spacing="0.6">EXISTING CALL FLOW</text>
+</g>
+  <g id="container-new">
+  <rect x="200" y="270" width="860" height="600" rx="4" ry="4"
+        fill="rgba(15,23,42,0.35)" stroke="#a16207" stroke-width="1.5"/>
+  <g class="badge">
+  <rect x="207" y="277" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="216" y="289" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">7</text>
+</g>
+  <text x="232" y="290" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="700" fill="#a16207" letter-spacing="0.6">NEW CALL FLOW</text>
+</g>
+  <g id="container-general">
+  <rect x="1120" y="200" width="320" height="520" rx="4" ry="4"
+        fill="rgba(15,23,42,0.35)" stroke="#9f1239" stroke-width="1.5"/>
+  <g class="badge">
+  <rect x="1127" y="207" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="1136" y="219" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">22</text>
+</g>
+  <text x="1152" y="220" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="700" fill="#9f1239" letter-spacing="0.6">GENERAL_PROCESS</text>
+</g>
+  <g id="edges"><path d="M156,422 H192 V114 H240" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M156,422 H192 V354 H240" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M408,114 H448.24" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M591.76,114 H640" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="599.76" y="106" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#86efac">Yes</text>
+<path d="M520,162.36 V174 H640" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="528" y="176.36" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#fca5a5">No</text>
+<path d="M390,354 H428.24" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M571.76,354 H580 V322 H600" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M571.76,354 H600" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M571.76,354 H580 V592 H600" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M750,322 H795.6" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M924.4,322 H950 V288" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="909" y="304" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#86efac">Yes</text>
+<path d="M860,365.4 V350 H950" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="866" y="377.4" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#fca5a5">No</text>
+<path d="M750,452 H795.6" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M924.4,452 H950 V418" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="909" y="434" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#86efac">Yes</text>
+<path d="M860,495.4 V480 H950" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="866" y="507.4" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#fca5a5">No</text>
+<path d="M750,592 H795.6" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M924.4,592 H950 V558" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="909" y="574" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#86efac">Yes</text>
+<path d="M860,635.4 V620 H950" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<text x="866" y="647.4" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="600" fill="#fca5a5">No</text>
+<path d="M840,174 H1100 V284" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    />
+<path d="M1120,350 H1100 V284" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    />
+<path d="M1120,480 H1100 V284" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    />
+<path d="M1120,620 H1100 V284" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    />
+<path d="M1100,284 H1160" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M1280,308 V370" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M1280,418 V480" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/>
+<path d="M1280,528 V600" fill="none" stroke="#94a3b8" stroke-width="1.35"
+    stroke-linecap="round" stroke-linejoin="round"
+    
+    marker-end="url(#arr)"/></g>
+  <g id="node-start" data-node="start">
+  <rect x="36" y="400" width="120" height="44" rx="22" ry="22"
+        fill="#0e7490" stroke="#22d3ee" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="35" y="399" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="44" y="411" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">1</text>
+</g>
+  <text x="96" y="426" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">Start Call</text>
+</g>
+  <g id="node-gen-queue" data-node="gen-queue">
+  <rect x="240" y="90" width="168" height="48" rx="6" ry="6"
+        fill="#1e3a8a" stroke="#60a5fa" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="239" y="89" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="248" y="101" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">3</text>
+</g>
+  <text x="324" y="118" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">General Support Queue</text>
+</g>
+  <g id="node-tech-avail" data-node="tech-avail">
+  <polygon points="520,65.64 591.76,114 520,162.36 448.24,114" fill="#1e40af" stroke="#93c5fd" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="449.24" y="66.64" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="458.24" y="78.64" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">4</text>
+</g>
+  <text x="520" y="111" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Technician</text>
+  <text x="520" y="123" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Available?</text>
+</g>
+  <g id="node-answered" data-node="answered">
+  <rect x="640" y="60" width="200" height="40" rx="20" ry="20"
+        fill="#166534" stroke="#4ade80" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="639" y="59" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="648" y="71" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">5</text>
+</g>
+  <text x="740" y="84" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Call Answered by Technician</text>
+</g>
+  <g id="node-local-vm" data-node="local-vm">
+  <rect x="640" y="150" width="200" height="48" rx="6" ry="6"
+        fill="#78350f" stroke="#d97706" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="639" y="149" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="648" y="161" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">6</text>
+</g>
+  <text x="740" y="178" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Pivoted to Local Voicemail</text>
+</g>
+  <g id="node-pop-menu" data-node="pop-menu">
+  <rect x="240" y="330" width="150" height="48" rx="6" ry="6"
+        fill="#78350f" stroke="#f59e0b" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="239" y="329" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="248" y="341" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">8</text>
+</g>
+  <text x="315" y="358" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Pop Menu Options</text>
+</g>
+  <g id="node-menu-sel" data-node="menu-sel">
+  <polygon points="500,305.64 571.76,354 500,402.36 428.24,354" fill="#92400e" stroke="#fbbf24" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="429.24" y="306.64" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="438.24" y="318.64" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">9</text>
+</g>
+  <text x="500" y="357" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Menu Selection</text>
+</g>
+  <g id="node-pw-q" data-node="pw-q">
+  <rect x="600" y="300" width="150" height="44" rx="6" ry="6"
+        fill="#581c87" stroke="#c084fc" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="599" y="299" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="608" y="311" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">10</text>
+</g>
+  <text x="675" y="326" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Password Reset Queue</text>
+</g>
+  <g id="node-pw-avail" data-node="pw-avail">
+  <polygon points="860,278.6 924.4,322 860,365.4 795.6,322" fill="#6b21a8" stroke="#d8b4fe" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="796.6" y="279.6" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="805.6" y="291.6" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">11</text>
+</g>
+  <text x="860" y="319" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Redirect Agent</text>
+  <text x="860" y="331" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Available?</text>
+</g>
+  <g id="node-pw-yes" data-node="pw-yes">
+  <rect x="950" y="270" width="170" height="36" rx="18" ry="18"
+        fill="#166534" stroke="#4ade80" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="949" y="269" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="958" y="281" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">12</text>
+</g>
+  <text x="1035" y="292" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Password Call Answered</text>
+</g>
+  <g id="node-pw-no" data-node="pw-no">
+  <rect x="950" y="330" width="170" height="40" rx="6" ry="6"
+        fill="#78350f" stroke="#d97706" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="949" y="329" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="958" y="341" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">13</text>
+</g>
+  <text x="1035" y="353.6666666666667" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Password Prompt Voicemail</text>
+</g>
+  <g id="node-sw-q" data-node="sw-q">
+  <rect x="600" y="430" width="150" height="44" rx="6" ry="6"
+        fill="#155e75" stroke="#22d3ee" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="599" y="429" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="608" y="441" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">14</text>
+</g>
+  <text x="675" y="449" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Software Issues</text>
+  <text x="675" y="463" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Queue</text>
+</g>
+  <g id="node-sw-avail" data-node="sw-avail">
+  <polygon points="860,408.6 924.4,452 860,495.4 795.6,452" fill="#0e7490" stroke="#67e8f9" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="796.6" y="409.6" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="805.6" y="421.6" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">15</text>
+</g>
+  <text x="860" y="449" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Software Agent</text>
+  <text x="860" y="461" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Available?</text>
+</g>
+  <g id="node-sw-yes" data-node="sw-yes">
+  <rect x="950" y="400" width="170" height="36" rx="18" ry="18"
+        fill="#166534" stroke="#4ade80" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="949" y="399" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="958" y="411" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">16</text>
+</g>
+  <text x="1035" y="422" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Software Call Answered</text>
+</g>
+  <g id="node-sw-no" data-node="sw-no">
+  <rect x="950" y="460" width="170" height="40" rx="6" ry="6"
+        fill="#78350f" stroke="#d97706" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="949" y="459" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="958" y="471" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">17</text>
+</g>
+  <text x="1035" y="483.6666666666667" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Software Prompt Voicemail</text>
+</g>
+  <g id="node-ot-q" data-node="ot-q">
+  <rect x="600" y="570" width="150" height="44" rx="6" ry="6"
+        fill="#3f3f46" stroke="#a1a1aa" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="599" y="569" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="608" y="581" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">18</text>
+</g>
+  <text x="675" y="596" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Other Issues Queue</text>
+</g>
+  <g id="node-ot-avail" data-node="ot-avail">
+  <polygon points="860,548.6 924.4,592 860,635.4 795.6,592" fill="#52525b" stroke="#d4d4d8" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="796.6" y="549.6" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="805.6" y="561.6" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">19</text>
+</g>
+  <text x="860" y="589" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Other Agent</text>
+  <text x="860" y="601" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Available?</text>
+</g>
+  <g id="node-ot-yes" data-node="ot-yes">
+  <rect x="950" y="540" width="170" height="36" rx="18" ry="18"
+        fill="#166534" stroke="#4ade80" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="949" y="539" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="958" y="551" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">20</text>
+</g>
+  <text x="1035" y="562" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Other Call Answered</text>
+</g>
+  <g id="node-ot-no" data-node="ot-no">
+  <rect x="950" y="600" width="170" height="40" rx="6" ry="6"
+        fill="#78350f" stroke="#d97706" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="949" y="599" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="958" y="611" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">21</text>
+</g>
+  <text x="1035" y="623.6666666666666" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">Other Prompt Voicemail</text>
+</g>
+  <g id="node-smart-vm" data-node="smart-vm">
+  <rect x="1160" y="260" width="240" height="48" rx="6" ry="6"
+        fill="#881337" stroke="#fb7185" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="1159" y="259" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="1168" y="271" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">23</text>
+</g>
+  <text x="1280" y="288" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">SMART Admin Voicemail</text>
+</g>
+  <g id="node-ticket" data-node="ticket">
+  <rect x="1160" y="370" width="240" height="48" rx="6" ry="6"
+        fill="#9f1239" stroke="#fb7185" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="1159" y="369" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="1168" y="381" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">24</text>
+</g>
+  <text x="1280" y="398" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Ticket Auto-Created</text>
+</g>
+  <g id="node-follow" data-node="follow">
+  <rect x="1160" y="480" width="240" height="48" rx="6" ry="6"
+        fill="#9f1239" stroke="#fda4af" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="1159" y="479" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="1168" y="491" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">25</text>
+</g>
+  <text x="1280" y="508" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="600" fill="#f8fafc">Technician Follows Up</text>
+</g>
+  <g id="node-resolved" data-node="resolved">
+  <rect x="1180" y="600" width="200" height="44" rx="22" ry="22"
+        fill="#166534" stroke="#4ade80" stroke-width="1.6"/>
+  <g class="badge">
+  <rect x="1179" y="599" width="18" height="16" rx="2" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="1188" y="611" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" font-weight="700" fill="#0f172a">26</text>
+</g>
+  <text x="1280" y="626" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">Issue Resolved</text>
+</g>
+  <g id="legend" transform="translate(36, 860)">
+  <rect width="1080" height="44" rx="6" fill="#111827" stroke="#334155"/>
+  <text x="12" y="18" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" font-weight="700" fill="#94a3b8">SHAPE KEY</text>
+  <rect x="12" y="24" width="36" height="12" rx="6" fill="#0e7490"/><text x="52" y="34" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" fill="#cbd5e1">Start / success capsule</text>
+  <rect x="200" y="24" width="36" height="12" rx="2" fill="#1e3a8a"/><text x="242" y="34" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" fill="#cbd5e1">Process / queue</text>
+  <polygon points="370,30 382,24 394,30 382,36" fill="#1e40af"/><text x="402" y="34" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" fill="#cbd5e1">Decision</text>
+  <rect x="470" y="24" width="36" height="12" rx="2" fill="#78350f"/><text x="512" y="34" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" fill="#cbd5e1">Voicemail path</text>
+  <rect x="620" y="24" width="36" height="12" rx="2" fill="#881337"/><text x="662" y="34" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" fill="#cbd5e1">Terminal pipeline</text>
+  <rect x="800" y="22" width="14" height="12" rx="2" fill="#e2e8f0"/><text x="807" y="31" text-anchor="middle" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="8" font-weight="700" fill="#0f172a">n</text>
+  <text x="820" y="34" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="10" fill="#cbd5e1">Node index badge</text>
+  <text x="1060" y="34" text-anchor="end" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="9" fill="#64748b">SVGEdit · MCP flowchart</text>
+</g>
+</svg>

@@ -147,10 +147,14 @@ export default class ConfigObj {
       // EDITOR OPTIONS
       // Change the following to preferences (already in the Editor Options dialog)?
       gridSnapping: false,
+      alignGuides: true,
+      alignGuideThreshold: 8,
       gridColor: '#000',
       baseUnit: 'px',
       snappingStep: 10,
       showRulers: true,
+      // Pencil freehand smoothing (0–100 → Paper.js simplify tolerance)
+      freehandSmoothing: 50,
       // SOURCE OUTPUT BEHAVIOR
       dynamicOutput: false,
       // URL BEHAVIOR CONFIGURATION
@@ -192,6 +196,15 @@ export default class ConfigObj {
       'ext-panning',
       'ext-shapes',
       'ext-polystar',
+      'ext-curvedarrow',
+      'ext-cube3d',
+      'ext-lipidbilayer',
+      'ext-nanoparticle',
+      'ext-hydrogel',
+      'ext-dna',
+      'ext-aichat',
+      'ext-eps',
+      'ext-pathfinder',
       'ext-storage',
       'ext-opensave',
       'ext-layer_view'

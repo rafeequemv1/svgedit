@@ -279,7 +279,7 @@ export default {
         // Add the context panel and its handler(s)
         const panelTemplate = document.createElement('template')
         // create the marker panel
-        let innerHTML = '<div id="marker_panel">'
+        let innerHTML = '<div id="marker_panel" class="selected_panel right_panel_section" style="display:none">'
         mtypes.forEach((pos) => {
           innerHTML += `<se-list id="${pos}_marker_list_opts" title="tools.${pos}_marker_list_opts" label="" width="22px" height="22px">`
           Object.entries(markerTypes).forEach(([marker, _mkr]) => {
@@ -289,7 +289,7 @@ export default {
         })
         innerHTML += '</div>'
         panelTemplate.innerHTML = innerHTML
-        $id('tools_top').appendChild(panelTemplate.content.cloneNode(true))
+        $id('right_properties_extensions').appendChild(panelTemplate.content.cloneNode(true))
         // don't display the panels on start
         showPanel(false)
         mtypes.forEach((pos) => {

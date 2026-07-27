@@ -1,0 +1,296 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="920" height="920" viewBox="0 0 920 920">
+  <title>GO/rGO Graphical Abstract</title>
+  <desc>Structure, Properties, Applications, and Functionality of Graphene Oxide and Reduced Graphene Oxide</desc>
+  <defs>
+    <clipPath id="circleClip"><circle cx="460" cy="460" r="446"/></clipPath>
+    <filter id="softShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2.2" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+    <radialGradient id="hubFill" cx="45%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#ffe4cc"/>
+      <stop offset="100%" stop-color="#f0b27a"/>
+    </radialGradient>
+    <linearGradient id="hex3d" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a0aec0"/>
+      <stop offset="55%" stop-color="#4a5568"/>
+      <stop offset="100%" stop-color="#2d3748"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="920" height="920" fill="#ffffff"/>
+
+  <!-- outer border -->
+  <circle cx="460" cy="460" r="448" fill="#ffffff" stroke="#1a202c" stroke-width="2.4"/>
+
+  <g clip-path="url(#circleClip)">
+    <!-- dashed cross through full diameter -->
+    <line x1="460" y1="12" x2="460" y2="908"
+          stroke="#a0aec0" stroke-width="1.5" stroke-dasharray="8 5"/>
+    <line x1="12" y1="460" x2="908" y2="460"
+          stroke="#a0aec0" stroke-width="1.5" stroke-dasharray="8 5"/>
+
+    <!-- STRUCTURE (top-left) -->
+    <g id="structure">
+      <g id="rgo">
+    <polygon points="213.0,141.5 213.0,156.5 200.0,164.0 187.0,156.5 187.0,141.5 200.0,134.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="235.5,154.5 235.5,169.5 222.5,177.0 209.5,169.5 209.5,154.5 222.5,147.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="258.0,141.5 258.0,156.5 245.0,164.0 232.0,156.5 232.0,141.5 245.0,134.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="280.5,154.5 280.5,169.5 267.5,177.0 254.5,169.5 254.5,154.5 267.5,147.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="303.0,141.5 303.0,156.5 290.0,164.0 277.0,156.5 277.0,141.5 290.0,134.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="213.0,167.5 213.0,182.5 200.0,190.0 187.0,182.5 187.0,167.5 200.0,160.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="235.5,180.5 235.5,195.5 222.5,203.0 209.5,195.5 209.5,180.5 222.5,173.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="258.0,167.5 258.0,182.5 245.0,190.0 232.0,182.5 232.0,167.5 245.0,160.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="280.5,180.5 280.5,195.5 267.5,203.0 254.5,195.5 254.5,180.5 267.5,173.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="303.0,167.5 303.0,182.5 290.0,190.0 277.0,182.5 277.0,167.5 290.0,160.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="213.0,193.5 213.0,208.5 200.0,216.0 187.0,208.5 187.0,193.5 200.0,186.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="235.5,206.5 235.5,221.5 222.5,229.0 209.5,221.5 209.5,206.5 222.5,199.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="258.0,193.5 258.0,208.5 245.0,216.0 232.0,208.5 232.0,193.5 245.0,186.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="280.5,206.5 280.5,221.5 267.5,229.0 254.5,221.5 254.5,206.5 267.5,199.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="303.0,193.5 303.0,208.5 290.0,216.0 277.0,208.5 277.0,193.5 290.0,186.0" fill="#edf2f7" stroke="none"/>
+    <path d="M213.0,141.5L213.0,156.5M213.0,156.5L200.0,164.0M200.0,164.0L187.0,156.5M187.0,156.5L187.0,141.5M187.0,141.5L200.0,134.0M200.0,134.0L213.0,141.5M235.5,154.5L235.5,169.5M235.5,169.5L222.5,177.0M222.5,177.0L209.5,169.5M209.5,169.5L209.5,154.5M209.5,154.5L222.5,147.0M222.5,147.0L235.5,154.5M258.0,141.5L258.0,156.5M258.0,156.5L245.0,164.0M245.0,164.0L232.0,156.5M232.0,156.5L232.0,141.5M232.0,141.5L245.0,134.0M245.0,134.0L258.0,141.5M280.5,154.5L280.5,169.5M280.5,169.5L267.5,177.0M267.5,177.0L254.5,169.5M254.5,169.5L254.5,154.5M254.5,154.5L267.5,147.0M267.5,147.0L280.5,154.5M303.0,141.5L303.0,156.5M303.0,156.5L290.0,164.0M290.0,164.0L277.0,156.5M277.0,156.5L277.0,141.5M277.0,141.5L290.0,134.0M290.0,134.0L303.0,141.5M213.0,167.5L213.0,182.5M213.0,182.5L200.0,190.0M200.0,190.0L187.0,182.5M187.0,182.5L187.0,167.5M187.0,167.5L200.0,160.0M200.0,160.0L213.0,167.5M235.5,180.5L235.5,195.5M235.5,195.5L222.5,203.0M222.5,203.0L209.5,195.5M209.5,195.5L209.5,180.5M209.5,180.5L222.5,173.0M222.5,173.0L235.5,180.5M258.0,167.5L258.0,182.5M258.0,182.5L245.0,190.0M245.0,190.0L232.0,182.5M232.0,182.5L232.0,167.5M232.0,167.5L245.0,160.0M245.0,160.0L258.0,167.5M280.5,180.5L280.5,195.5M280.5,195.5L267.5,203.0M267.5,203.0L254.5,195.5M254.5,195.5L254.5,180.5M254.5,180.5L267.5,173.0M267.5,173.0L280.5,180.5M303.0,167.5L303.0,182.5M303.0,182.5L290.0,190.0M290.0,190.0L277.0,182.5M277.0,182.5L277.0,167.5M277.0,167.5L290.0,160.0M290.0,160.0L303.0,167.5M213.0,193.5L213.0,208.5M213.0,208.5L200.0,216.0M200.0,216.0L187.0,208.5M187.0,208.5L187.0,193.5M187.0,193.5L200.0,186.0M200.0,186.0L213.0,193.5M235.5,206.5L235.5,221.5M235.5,221.5L222.5,229.0M222.5,229.0L209.5,221.5M209.5,221.5L209.5,206.5M209.5,206.5L222.5,199.0M222.5,199.0L235.5,206.5M258.0,193.5L258.0,208.5M258.0,208.5L245.0,216.0M245.0,216.0L232.0,208.5M232.0,208.5L232.0,193.5M232.0,193.5L245.0,186.0M245.0,186.0L258.0,193.5M280.5,206.5L280.5,221.5M280.5,221.5L267.5,229.0M267.5,229.0L254.5,221.5M254.5,221.5L254.5,206.5M254.5,206.5L267.5,199.0M267.5,199.0L280.5,206.5M303.0,193.5L303.0,208.5M303.0,208.5L290.0,216.0M290.0,216.0L277.0,208.5M277.0,208.5L277.0,193.5M277.0,193.5L290.0,186.0M290.0,186.0L303.0,193.5" fill="none" stroke="#4a5568" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+      <g>
+    <circle cx="200" cy="148" r="8" fill="#fff" stroke="#c53030" stroke-width="1.3"/>
+    <text x="200" y="151.2" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="700" fill="#c53030">OH</text>
+  </g>
+      <g>
+    <circle cx="292" cy="162" r="7.5" fill="#fff" stroke="#c53030" stroke-width="1.3"/>
+    <text x="292" y="165.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#c53030">O</text>
+  </g>
+      <text x="245" y="232" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13.5" font-weight="700" fill="#2b6cb0">Reduced graphene oxide (rGO)</text>
+
+      <g id="go">
+    <polygon points="213.0,266.5 213.0,281.5 200.0,289.0 187.0,281.5 187.0,266.5 200.0,259.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="235.5,279.5 235.5,294.5 222.5,302.0 209.5,294.5 209.5,279.5 222.5,272.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="258.0,266.5 258.0,281.5 245.0,289.0 232.0,281.5 232.0,266.5 245.0,259.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="280.5,279.5 280.5,294.5 267.5,302.0 254.5,294.5 254.5,279.5 267.5,272.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="303.0,266.5 303.0,281.5 290.0,289.0 277.0,281.5 277.0,266.5 290.0,259.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="213.0,292.5 213.0,307.5 200.0,315.0 187.0,307.5 187.0,292.5 200.0,285.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="235.5,305.5 235.5,320.5 222.5,328.0 209.5,320.5 209.5,305.5 222.5,298.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="258.0,292.5 258.0,307.5 245.0,315.0 232.0,307.5 232.0,292.5 245.0,285.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="280.5,305.5 280.5,320.5 267.5,328.0 254.5,320.5 254.5,305.5 267.5,298.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="303.0,292.5 303.0,307.5 290.0,315.0 277.0,307.5 277.0,292.5 290.0,285.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="213.0,318.5 213.0,333.5 200.0,341.0 187.0,333.5 187.0,318.5 200.0,311.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="235.5,331.5 235.5,346.5 222.5,354.0 209.5,346.5 209.5,331.5 222.5,324.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="258.0,318.5 258.0,333.5 245.0,341.0 232.0,333.5 232.0,318.5 245.0,311.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="280.5,331.5 280.5,346.5 267.5,354.0 254.5,346.5 254.5,331.5 267.5,324.0" fill="#edf2f7" stroke="none"/>
+    <polygon points="303.0,318.5 303.0,333.5 290.0,341.0 277.0,333.5 277.0,318.5 290.0,311.0" fill="#edf2f7" stroke="none"/>
+    <path d="M213.0,266.5L213.0,281.5M213.0,281.5L200.0,289.0M200.0,289.0L187.0,281.5M187.0,281.5L187.0,266.5M187.0,266.5L200.0,259.0M200.0,259.0L213.0,266.5M235.5,279.5L235.5,294.5M235.5,294.5L222.5,302.0M222.5,302.0L209.5,294.5M209.5,294.5L209.5,279.5M209.5,279.5L222.5,272.0M222.5,272.0L235.5,279.5M258.0,266.5L258.0,281.5M258.0,281.5L245.0,289.0M245.0,289.0L232.0,281.5M232.0,281.5L232.0,266.5M232.0,266.5L245.0,259.0M245.0,259.0L258.0,266.5M280.5,279.5L280.5,294.5M280.5,294.5L267.5,302.0M267.5,302.0L254.5,294.5M254.5,294.5L254.5,279.5M254.5,279.5L267.5,272.0M267.5,272.0L280.5,279.5M303.0,266.5L303.0,281.5M303.0,281.5L290.0,289.0M290.0,289.0L277.0,281.5M277.0,281.5L277.0,266.5M277.0,266.5L290.0,259.0M290.0,259.0L303.0,266.5M213.0,292.5L213.0,307.5M213.0,307.5L200.0,315.0M200.0,315.0L187.0,307.5M187.0,307.5L187.0,292.5M187.0,292.5L200.0,285.0M200.0,285.0L213.0,292.5M235.5,305.5L235.5,320.5M235.5,320.5L222.5,328.0M222.5,328.0L209.5,320.5M209.5,320.5L209.5,305.5M209.5,305.5L222.5,298.0M222.5,298.0L235.5,305.5M258.0,292.5L258.0,307.5M258.0,307.5L245.0,315.0M245.0,315.0L232.0,307.5M232.0,307.5L232.0,292.5M232.0,292.5L245.0,285.0M245.0,285.0L258.0,292.5M280.5,305.5L280.5,320.5M280.5,320.5L267.5,328.0M267.5,328.0L254.5,320.5M254.5,320.5L254.5,305.5M254.5,305.5L267.5,298.0M267.5,298.0L280.5,305.5M303.0,292.5L303.0,307.5M303.0,307.5L290.0,315.0M290.0,315.0L277.0,307.5M277.0,307.5L277.0,292.5M277.0,292.5L290.0,285.0M290.0,285.0L303.0,292.5M213.0,318.5L213.0,333.5M213.0,333.5L200.0,341.0M200.0,341.0L187.0,333.5M187.0,333.5L187.0,318.5M187.0,318.5L200.0,311.0M200.0,311.0L213.0,318.5M235.5,331.5L235.5,346.5M235.5,346.5L222.5,354.0M222.5,354.0L209.5,346.5M209.5,346.5L209.5,331.5M209.5,331.5L222.5,324.0M222.5,324.0L235.5,331.5M258.0,318.5L258.0,333.5M258.0,333.5L245.0,341.0M245.0,341.0L232.0,333.5M232.0,333.5L232.0,318.5M232.0,318.5L245.0,311.0M245.0,311.0L258.0,318.5M280.5,331.5L280.5,346.5M280.5,346.5L267.5,354.0M267.5,354.0L254.5,346.5M254.5,346.5L254.5,331.5M254.5,331.5L267.5,324.0M267.5,324.0L280.5,331.5M303.0,318.5L303.0,333.5M303.0,333.5L290.0,341.0M290.0,341.0L277.0,333.5M277.0,333.5L277.0,318.5M277.0,318.5L290.0,311.0M290.0,311.0L303.0,318.5" fill="none" stroke="#4a5568" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+      <g>
+    <rect x="150" y="270" width="36" height="16" rx="3" fill="#fff" stroke="#c53030" stroke-width="1.2"/>
+    <text x="168" y="281.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="700" fill="#c53030">COOH</text>
+  </g>
+      <g>
+    <circle cx="210" cy="262" r="8" fill="#fff" stroke="#c53030" stroke-width="1.3"/>
+    <text x="210" y="265.2" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="700" fill="#c53030">OH</text>
+  </g>
+      <g>
+    <circle cx="255" cy="292" r="7.5" fill="#fff" stroke="#c53030" stroke-width="1.3"/>
+    <text x="255" y="295.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#c53030">O</text>
+  </g>
+      <g>
+    <circle cx="300" cy="268" r="8" fill="#fff" stroke="#c53030" stroke-width="1.3"/>
+    <text x="300" y="271.2" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="700" fill="#c53030">OH</text>
+  </g>
+      <g>
+    <rect x="310" y="310" width="36" height="16" rx="3" fill="#fff" stroke="#c53030" stroke-width="1.2"/>
+    <text x="328" y="321.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="700" fill="#c53030">COOH</text>
+  </g>
+      <text x="245" y="365" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13.5" font-weight="700" fill="#2b6cb0">Graphene oxide (GO)</text>
+    </g>
+
+    <!-- PROPERTIES (top-right) — overlapping pastel bubbles -->
+    <g id="properties">
+      <circle cx="590" cy="155" r="56" fill="#90cdf4" fill-opacity="0.58" stroke="#63b3ed" stroke-width="1.1"/>
+      <text x="590" y="160" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#1a202c">Electrical</text>
+
+      <circle cx="730" cy="148" r="54" fill="#fbb6ce" fill-opacity="0.58" stroke="#f687b3" stroke-width="1.1"/>
+      <text x="730" y="153" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#1a202c">Physical</text>
+
+      <circle cx="630" cy="250" r="58" fill="#faf089" fill-opacity="0.62" stroke="#ecc94b" stroke-width="1.1"/>
+      <text x="630" y="255" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#1a202c">Photothermal</text>
+
+      <circle cx="755" cy="248" r="52" fill="#a3bffa" fill-opacity="0.52" stroke="#7f9cf5" stroke-width="1.1"/>
+      <text x="755" y="253" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#1a202c">Optical</text>
+
+      <circle cx="685" cy="340" r="56" fill="#9ae6b4" fill-opacity="0.58" stroke="#68d391" stroke-width="1.1"/>
+      <text x="685" y="345" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#1a202c">Biocompatibility</text>
+    </g>
+
+    <!-- APPLICATIONS (bottom-left) 2×3 — kept inside circle -->
+    <g id="applications">
+      <g transform="translate(180,505)">
+    <rect x="-30" y="12" width="60" height="7" rx="2" fill="#3182ce"/>
+    
+      <path d="M-18,12 L-18,0" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M-18,0 Q-28,-8 -28,-16" fill="none" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M-18,0 Q-8,-8 -8,-16" fill="none" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="-28" cy="-17" r="2.8" fill="#e53e3e"/>
+      <circle cx="-8" cy="-17" r="2.8" fill="#e53e3e"/>
+    
+      <path d="M0,12 L0,0" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M0,0 Q-10,-8 -10,-16" fill="none" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M0,0 Q10,-8 10,-16" fill="none" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="-10" cy="-17" r="2.8" fill="#e53e3e"/>
+      <circle cx="10" cy="-17" r="2.8" fill="#e53e3e"/>
+    
+      <path d="M18,12 L18,0" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M18,0 Q8,-8 8,-16" fill="none" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M18,0 Q28,-8 28,-16" fill="none" stroke="#e53e3e" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="8" cy="-17" r="2.8" fill="#e53e3e"/>
+      <circle cx="28" cy="-17" r="2.8" fill="#e53e3e"/>
+    
+    <text x="0" y="36" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">Biosensor</text>
+  </g>
+      <g transform="translate(305,505)">
+    <ellipse cx="0" cy="0" rx="24" ry="17" fill="#68d391" stroke="#276749" stroke-width="1.5"/>
+    <ellipse cx="-5" cy="-2" rx="9" ry="8" fill="#2b6cb0"/>
+    <ellipse cx="11" cy="5" rx="5" ry="4" fill="#9ae6b4"/>
+    <path d="M-18,-6 Q-22,-14 -14,-16" fill="none" stroke="#276749" stroke-width="1.3"/>
+    <text x="0" y="36" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">Bioimaging</text>
+  </g>
+      <g transform="translate(180,585)">
+    <rect x="-26" y="-18" width="52" height="34" rx="3" fill="#fed7e2" stroke="#d53f8c" stroke-width="1.1"/>
+    <path d="M-22,-10 Q-8,-15 0,-10 Q10,-5 22,-10" fill="none" stroke="#ed64a6" stroke-width="1.55"/><path d="M-22,-2 Q-8,-7 0,-2 Q10,3 22,-2" fill="none" stroke="#ed64a6" stroke-width="1.55"/><path d="M-22,6 Q-8,1 0,6 Q10,11 22,6" fill="none" stroke="#ed64a6" stroke-width="1.55"/><path d="M-22,14 Q-8,9 0,14 Q10,19 22,14" fill="none" stroke="#ed64a6" stroke-width="1.55"/>
+    <path d="M-12,-14 Q-8,0 -12,14" fill="none" stroke="#f687b3" stroke-width="1.35"/><path d="M-4,-14 Q0,0 -4,14" fill="none" stroke="#f687b3" stroke-width="1.35"/><path d="M4,-14 Q8,0 4,14" fill="none" stroke="#f687b3" stroke-width="1.35"/><path d="M12,-14 Q16,0 12,14" fill="none" stroke="#f687b3" stroke-width="1.35"/>
+    <text x="0" y="38" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">Tissue Engineering</text>
+  </g>
+      <g transform="translate(305,585)">
+    <ellipse cx="-2" cy="0" rx="22" ry="11" fill="#ecc94b" stroke="#975a16" stroke-width="1.5"/>
+    <ellipse cx="-8" cy="-2" rx="5" ry="3.5" fill="#d69e2e" opacity="0.45"/>
+    <line x1="18" y1="-5" x2="30" y2="-12" stroke="#975a16" stroke-width="1.4"/>
+    <line x1="20" y1="0" x2="32" y2="0" stroke="#975a16" stroke-width="1.4"/>
+    <line x1="18" y1="5" x2="30" y2="12" stroke="#975a16" stroke-width="1.4"/>
+    <circle cx="30" cy="-12" r="2.2" fill="#975a16"/>
+    <circle cx="32" cy="0" r="2.2" fill="#975a16"/>
+    <circle cx="30" cy="12" r="2.2" fill="#975a16"/>
+    <text x="0" y="36" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">Antibacterial</text>
+  </g>
+      <g transform="translate(180,670)">
+    <polygon points="5,-20 -7,-1 1,-1 -3,20 10,1 1,1" fill="#ed8936" stroke="#c05621" stroke-width="1.3" stroke-linejoin="round"/>
+    <text x="2" y="36" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11.5" font-weight="700" fill="#1a202c">Phototherapy</text>
+  </g>
+      <g transform="translate(305,658)">
+    <path d="M-9,-18 C-18,-8 -2,0 -9,10 C-16,18 -2,24 -7,30" fill="none" stroke="#3182ce" stroke-width="2.3"/>
+    <path d="M9,-18 C18,-8 2,0 9,10 C16,18 2,24 7,30" fill="none" stroke="#e53e3e" stroke-width="2.3"/>
+    <line x1="-8" y1="-12" x2="8" y2="-12" stroke="#a0aec0" stroke-width="1.5"/><line x1="-8" y1="-3" x2="8" y2="-3" stroke="#a0aec0" stroke-width="1.5"/><line x1="-8" y1="6" x2="8" y2="6" stroke="#a0aec0" stroke-width="1.5"/><line x1="-8" y1="15" x2="8" y2="15" stroke="#a0aec0" stroke-width="1.5"/><line x1="-8" y1="24" x2="8" y2="24" stroke="#a0aec0" stroke-width="1.5"/>
+    <text x="0" y="46" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10.5" font-weight="700" fill="#1a202c">Drug/gene delivery</text>
+  </g>
+    </g>
+
+    <!-- FUNCTIONALITY (bottom-right) -->
+    <g id="functionality">
+      <g transform="translate(555,510)">
+    <text x="-36" y="4" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#1a202c">R</text>
+    <line x1="-28" y1="0" x2="-10" y2="0" stroke="#1a202c" stroke-width="1.8"/>
+    <circle cx="0" cy="0" r="8" fill="#fff" stroke="#1a202c" stroke-width="1.7"/>
+    <text x="0" y="4" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">C</text>
+    <!-- double bond up to O -->
+    <line x1="-1.8" y1="-8" x2="-1.8" y2="-18" stroke="#1a202c" stroke-width="1.6"/>
+    <line x1="1.8" y1="-8" x2="1.8" y2="-18" stroke="#1a202c" stroke-width="1.6"/>
+    <circle cx="0" cy="-26" r="8" fill="#fff" stroke="#1a202c" stroke-width="1.7"/>
+    <text x="0" y="-22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">O</text>
+    <!-- OH to the right-down -->
+    <line x1="7" y1="4" x2="18" y2="12" stroke="#1a202c" stroke-width="1.7"/>
+    <circle cx="26" cy="16" r="8" fill="#fff" stroke="#1a202c" stroke-width="1.7"/>
+    <text x="26" y="20" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">O</text>
+    <line x1="34" y1="16" x2="44" y2="16" stroke="#1a202c" stroke-width="1.7"/>
+    <circle cx="50" cy="16" r="3.2" fill="#1a202c"/>
+    <text x="58" y="20" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">H</text>
+    <text x="14" y="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0">Carboxylic</text>
+  </g>
+      <g transform="translate(715,500)">
+    <text x="-34" y="4" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#1a202c">R</text>
+    <line x1="-26" y1="0" x2="-8" y2="0" stroke="#1a202c" stroke-width="2"/>
+    <circle cx="0" cy="0" r="9" fill="#fff" stroke="#1a202c" stroke-width="1.8"/>
+    <text x="0" y="4.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">O</text>
+    <line x1="9" y1="0" x2="24" y2="0" stroke="#1a202c" stroke-width="2"/>
+    <circle cx="30" cy="0" r="3.5" fill="#1a202c"/>
+    <text x="40" y="4.5" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#1a202c">H</text>
+    <text x="8" y="28" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0">Hydroxyl</text>
+  </g>
+      <g transform="translate(615,605)">
+    <text x="-32" y="-20" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">R₁</text>
+    <text x="22" y="-20" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">R₂</text>
+    <text x="-32" y="30" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">R₃</text>
+    <text x="22" y="30" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">R₄</text>
+    <line x1="-18" y1="-14" x2="-8" y2="-2" stroke="#1a202c" stroke-width="1.5"/>
+    <line x1="18" y1="-14" x2="8" y2="-2" stroke="#1a202c" stroke-width="1.5"/>
+    <line x1="-18" y1="20" x2="-8" y2="10" stroke="#1a202c" stroke-width="1.5"/>
+    <line x1="18" y1="20" x2="8" y2="10" stroke="#1a202c" stroke-width="1.5"/>
+    <line x1="-8" y1="4" x2="8" y2="4" stroke="#1a202c" stroke-width="1.8"/>
+    <line x1="-8" y1="4" x2="0" y2="-12" stroke="#1a202c" stroke-width="1.8"/>
+    <line x1="8" y1="4" x2="0" y2="-12" stroke="#1a202c" stroke-width="1.8"/>
+    <circle cx="0" cy="-16" r="7.5" fill="#fff" stroke="#1a202c" stroke-width="1.6"/>
+    <text x="0" y="-12" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">O</text>
+    <circle cx="-9" cy="6" r="6" fill="#fff" stroke="#1a202c" stroke-width="1.4"/>
+    <circle cx="9" cy="6" r="6" fill="#fff" stroke="#1a202c" stroke-width="1.4"/>
+    <text x="-9" y="9" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="700" fill="#1a202c">C</text>
+    <text x="9" y="9" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="700" fill="#1a202c">C</text>
+    <text x="0" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0">Epoxide</text>
+  </g>
+      <g transform="translate(720,700)">
+    <text x="-32" y="4" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">R</text>
+    <line x1="-24" y1="0" x2="-9" y2="0" stroke="#1a202c" stroke-width="1.7"/>
+    <circle cx="0" cy="0" r="8" fill="#fff" stroke="#1a202c" stroke-width="1.7"/>
+    <text x="0" y="4" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">C</text>
+    <line x1="-1.6" y1="-8" x2="-1.6" y2="-17" stroke="#1a202c" stroke-width="1.5"/>
+    <line x1="1.6" y1="-8" x2="1.6" y2="-17" stroke="#1a202c" stroke-width="1.5"/>
+    <circle cx="0" cy="-24" r="8" fill="#fff" stroke="#1a202c" stroke-width="1.7"/>
+    <text x="0" y="-20" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#1a202c">O</text>
+    <line x1="8" y1="0" x2="22" y2="0" stroke="#1a202c" stroke-width="1.7"/>
+    <text x="26" y="4" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#1a202c">R′</text>
+    <text x="4" y="24" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#2b6cb0">Carbonyl</text>
+  </g>
+    </g>
+  </g>
+
+  <!-- CENTRAL HUB (above dashed lines visually) -->
+  <g id="hub">
+    <circle cx="460" cy="460" r="112" fill="url(#hubFill)" stroke="#dd6b20" stroke-width="1.3" filter="url(#softShadow)"/>
+    <!-- divider ticks -->
+    <line x1="460" y1="348" x2="460" y2="360" stroke="#c05621" stroke-width="1.3"/>
+    <line x1="460" y1="560" x2="460" y2="572" stroke="#c05621" stroke-width="1.3"/>
+    <line x1="348" y1="460" x2="360" y2="460" stroke="#c05621" stroke-width="1.3"/>
+    <line x1="560" y1="460" x2="572" y2="460" stroke="#c05621" stroke-width="1.3"/>
+
+    <g filter="url(#softShadow)">
+      <polygon points="473.42,450.25 473.42,465.75 460.00,473.50 446.58,465.75 446.58,450.25 460.00,442.50" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+      <polygon points="496.67,436.83 496.67,452.33 483.25,460.08 469.83,452.33 469.83,436.83 483.25,429.08" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+      <polygon points="496.67,463.67 496.67,479.17 483.25,486.92 469.83,479.17 469.83,463.67 483.25,455.92" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+      <polygon points="473.42,477.10 473.42,492.60 460.00,500.35 446.58,492.60 446.58,477.10 460.00,469.35" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+      <polygon points="450.17,463.67 450.17,479.17 436.75,486.92 423.33,479.17 423.33,463.67 436.75,455.92" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+      <polygon points="450.17,436.83 450.17,452.33 436.75,460.08 423.33,452.33 423.33,436.83 436.75,429.08" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+      <polygon points="473.42,423.40 473.42,438.90 460.00,446.65 446.58,438.90 446.58,423.40 460.00,415.65" fill="url(#hex3d)" stroke="#1a202c" stroke-width="1.15"/>
+    </g>
+    <text x="460" y="467" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="800" fill="#1a202c" letter-spacing="0.5">GO/rGO</text>
+
+    <!-- rim labels (angles: 0° east, CCW; screen y-down)
+         Structure NW ≈ 200→245°, Properties NE ≈ 295→340°,
+         Applications SW ≈ 155→115° (CW for upright), Functionality SE ≈ 65→25° -->
+    
+  <defs><path id="p-structure" fill="none" d="M367.91,426.48 A98,98 0 0,1 434.64,365.34"/></defs>
+  <text font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="700" fill="#1a202c">
+    <textPath href="#p-structure" startOffset="50%" text-anchor="middle">Structure</textPath>
+  </text>
+    
+  <defs><path id="p-properties" fill="none" d="M485.36,365.34 A98,98 0 0,1 552.09,426.48"/></defs>
+  <text font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="700" fill="#1a202c">
+    <textPath href="#p-properties" startOffset="50%" text-anchor="middle">Properties</textPath>
+  </text>
+    
+  <defs><path id="p-apps" fill="none" d="M365.34,485.36 A98,98 0 0,0 434.64,554.66"/></defs>
+  <text font-family="Arial, Helvetica, sans-serif" font-size="11.5" font-weight="700" fill="#1a202c">
+    <textPath href="#p-apps" startOffset="50%" text-anchor="middle">Applications</textPath>
+  </text>
+    
+  <defs><path id="p-func" fill="none" d="M485.36,554.66 A98,98 0 0,0 554.66,485.36"/></defs>
+  <text font-family="Arial, Helvetica, sans-serif" font-size="11.5" font-weight="700" fill="#1a202c">
+    <textPath href="#p-func" startOffset="50%" text-anchor="middle">Functionality</textPath>
+  </text>
+  </g>
+
+  <!-- redraw outer stroke on top -->
+  <circle cx="460" cy="460" r="448" fill="none" stroke="#1a202c" stroke-width="2.4"/>
+</svg>

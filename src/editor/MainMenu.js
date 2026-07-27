@@ -141,6 +141,10 @@ class MainMenu {
         openExportWindow()
       }
       this.editor.svgCanvas.exportPDF(exportWindowName)
+    } else if (imgType === 'EPS') {
+      if (this.editor.exportEPS) {
+        await this.editor.exportEPS()
+      }
     } else {
       if (!this.editor.customExportImage) {
         openExportWindow()

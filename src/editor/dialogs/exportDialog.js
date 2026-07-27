@@ -123,7 +123,7 @@ export class SeExportDialog extends HTMLElement {
       }
     }
     const onChangeHandler = (e) => {
-      if (e.target.value === 'PDF') {
+      if (e.target.value === 'PDF' || e.target.value === 'EPS') {
         this.$qualityCont.style.display = 'none'
       } else {
         this.$qualityCont.style.display = 'block'

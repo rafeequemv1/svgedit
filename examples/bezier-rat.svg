@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <title>Bezier Rat - pen tool MCP test</title>
+  <desc>Stylized rat drawn with cubic Bezier paths (pen/path tool style)</desc>
+  <defs>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4a484"/>
+      <stop offset="100%" stop-color="#8b6914"/>
+    </linearGradient>
+    <linearGradient id="belly" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5e6d3"/>
+      <stop offset="100%" stop-color="#e8d4b8"/>
+    </linearGradient>
+    <linearGradient id="earIn" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8b4c4"/>
+      <stop offset="100%" stop-color="#e891a8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- artboard ground hint -->
+  <path id="ground" fill="none" stroke="#cbd5e1" stroke-width="2"
+        d="M40,400 C180,420 460,420 600,400"/>
+
+  <!-- Tail (long cubic Bezier - classic pen-tool flourish) -->
+  <path id="tail" fill="none" stroke="#a67c52" stroke-width="10" stroke-linecap="round"
+        d="M420,270
+           C480,250 520,200 540,160
+           C560,120 575,95 600,90
+           C585,110 570,145 555,185
+           C540,225 500,265 455,285"/>
+
+  <!-- Hind body -->
+  <path id="body"
+        fill="url(#fur)" stroke="#5c4033" stroke-width="2.5" stroke-linejoin="round"
+        d="M220,250
+           C180,210 170,170 210,145
+           C250,120 320,115 370,145
+           C420,175 440,230 415,280
+           C390,330 300,345 245,320
+           C200,300 195,275 220,250 Z"/>
+
+  <!-- Belly patch -->
+  <path id="belly"
+        fill="url(#belly)" stroke="none"
+        d="M250,255
+           C270,240 320,235 355,255
+           C375,275 365,305 330,315
+           C290,325 255,305 250,275
+           C248,265 248,260 250,255 Z"/>
+
+  <!-- Head -->
+  <path id="head"
+        fill="url(#fur)" stroke="#5c4033" stroke-width="2.5" stroke-linejoin="round"
+        d="M150,200
+           C120,175 115,140 145,120
+           C175,100 220,105 245,130
+           C270,155 265,200 240,225
+           C215,250 175,250 155,230
+           C140,215 145,210 150,200 Z"/>
+
+  <!-- Left ear outer -->
+  <path id="ear-left"
+        fill="url(#fur)" stroke="#5c4033" stroke-width="2" stroke-linejoin="round"
+        d="M155,135
+           C140,95 155,70 180,75
+           C200,80 205,110 190,135
+           C180,145 165,145 155,135 Z"/>
+
+  <!-- Left ear inner -->
+  <path id="ear-left-inner"
+        fill="url(#earIn)" stroke="none"
+        d="M165,128
+           C158,105 168,90 182,93
+           C192,96 194,115 185,128
+           C178,135 170,134 165,128 Z"/>
+
+  <!-- Right ear outer -->
+  <path id="ear-right"
+        fill="url(#fur)" stroke="#5c4033" stroke-width="2" stroke-linejoin="round"
+        d="M210,120
+           C215,80 245,70 265,90
+           C280,105 270,135 245,145
+           C230,150 215,140 210,120 Z"/>
+
+  <!-- Right ear inner -->
+  <path id="ear-right-inner"
+        fill="url(#earIn)" stroke="none"
+        d="M222,118
+           C226,95 245,90 256,102
+           C264,112 256,130 240,134
+           C230,136 220,128 222,118 Z"/>
+
+  <!-- Snout -->
+  <path id="snout"
+        fill="#e8d4b8" stroke="#5c4033" stroke-width="1.8" stroke-linejoin="round"
+        d="M130,195
+           C110,190 100,175 112,162
+           C125,148 155,150 165,168
+           C172,182 155,200 140,200
+           C135,200 132,198 130,195 Z"/>
+
+  <!-- Nose -->
+  <path id="nose"
+        fill="#2d1f1a" stroke="none"
+        d="M108,172
+           C102,168 102,160 110,158
+           C118,156 124,162 122,170
+           C120,176 114,176 108,172 Z"/>
+
+  <!-- Eyes -->
+  <path id="eye-left"
+        fill="#1a1a1a" stroke="none"
+        d="M165,165
+           C160,160 160,152 168,150
+           C176,148 182,155 178,163
+           C175,169 169,169 165,165 Z"/>
+  <path id="eye-right"
+        fill="#1a1a1a" stroke="none"
+        d="M198,158
+           C193,153 193,145 201,143
+           C209,141 215,148 211,156
+           C208,162 202,162 198,158 Z"/>
+  <path id="eye-hl-l" fill="#fff"
+        d="M170,155 C168,153 168,151 171,150 C173,149 175,151 174,154 C173,156 171,156 170,155 Z"/>
+  <path id="eye-hl-r" fill="#fff"
+        d="M203,148 C201,146 201,144 204,143 C206,142 208,144 207,147 C206,149 204,149 203,148 Z"/>
+
+  <!-- Whiskers -->
+  <g id="whiskers" fill="none" stroke="#3f3f46" stroke-width="1.4" stroke-linecap="round">
+    <path d="M125,178 C95,170 70,168 48,172"/>
+    <path d="M128,188 C98,192 72,200 52,210"/>
+    <path d="M130,198 C105,210 85,225 70,240"/>
+    <path d="M160,175 C185,160 210,150 235,148"/>
+    <path d="M162,185 C190,185 220,190 245,200"/>
+  </g>
+
+  <!-- Front paw -->
+  <path id="paw-front"
+        fill="url(#fur)" stroke="#5c4033" stroke-width="2" stroke-linejoin="round"
+        d="M200,310
+           C190,325 185,345 195,355
+           C205,365 225,360 230,345
+           C235,330 225,315 210,310
+           C205,308 202,308 200,310 Z"/>
+
+  <!-- Hind paw -->
+  <path id="paw-hind"
+        fill="url(#fur)" stroke="#5c4033" stroke-width="2" stroke-linejoin="round"
+        d="M320,315
+           C310,335 305,355 318,365
+           C332,375 350,365 352,348
+           C354,330 340,318 325,315
+           C322,314 321,314 320,315 Z"/>
+
+  <path id="caption-underline" fill="none" stroke="#94a3b8" stroke-width="1.5"
+        d="M200,430 C280,445 400,445 480,430"/>
+  <text x="320" y="455" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="#334155">
+    Pen / Bezier rat - MCP artboard test
+  </text>
+</svg>

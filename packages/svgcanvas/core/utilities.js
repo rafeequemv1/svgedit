@@ -838,13 +838,33 @@ export const getBBoxOfElementAsPath = (
 export const convertToPath = (elem, attrs, svgCanvas) => {
   const batchCmd = new svgCanvas.history.BatchCommand('Convert element to Path')
 
-  // Any attribute on the element not covered by the passed-in attributes
-  attrs = mergeDeep(attrs, getExtraAttributesForConvertToPath(elem))
+  // Prefer the element's own paint attrs so Convert / dblclick-to-edit
+  // does not replace fill/stroke with the current drawing style.
+  const paintKeys = [
+    'fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray',
+    'stroke-linejoin', 'stroke-linecap', 'stroke-opacity', 'opacity',
+    'style', 'class'
+  ]
+  const fromElem = {}
+  paintKeys.forEach((name) => {
+    if (elem.hasAttribute(name)) fromElem[name] = elem.getAttribute(name)
+  })
+  // Element paint wins over current-tool defaults
+  attrs = { ...(attrs || {}), ...fromElem }
+  attrs = { ...attrs, ...getExtraAttributesForConvertToPath(elem) }
+  // Never leave the converted path hidden
+  delete attrs.visibility
 
   const path = svgCanvas.addSVGElementsFromJson({
     element: 'path',
     attr: attrs
   })
+
+  // Re-assert paint in case assignAttributes / defaults interfered
+  paintKeys.forEach((name) => {
+    if (fromElem[name] != null) path.setAttribute(name, fromElem[name])
+  })
+  path.removeAttribute('visibility')
 
   const eltrans = elem.getAttribute('transform')
   if (eltrans) {

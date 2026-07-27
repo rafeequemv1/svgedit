@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 51.04 49.47">
+  <defs>
+    <style>
+      .bounds { fill: none; }
+      .edge { fill: none; stroke: #fff; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+      .face-top { fill: #f9ba00; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+      .face-left { fill: #fff; stroke: #fff; stroke-width: 2; stroke-linejoin: round; opacity: 0.55; }
+      .face-right { fill: #fff; stroke: #fff; stroke-width: 2; stroke-linejoin: round; opacity: 0.8; }
+    </style>
+  </defs>
+  <rect class="bounds" width="51.04" height="49.47"/>
+  <!-- Isometric cube for dark toolbar -->
+  <polygon class="face-left" points="10.5,18.5 10.5,33.5 25.5,41 25.5,26"/>
+  <polygon class="face-right" points="25.5,26 25.5,41 40.5,33.5 40.5,18.5"/>
+  <polygon class="face-top" points="10.5,18.5 25.5,11 40.5,18.5 25.5,26"/>
+  <polyline class="edge" points="25.5,26 25.5,41"/>
+</svg>

@@ -25,10 +25,15 @@ import LeftPanel from './panels/LeftPanel.js'
 import TopPanel from './panels/TopPanel.js'
 import BottomPanel from './panels/BottomPanel.js'
 import LayersPanel from './panels/LayersPanel.js'
+import RightPanel from './panels/RightPanel.js'
 import MainMenu from './MainMenu.js'
 import { getParentsUntil } from '@svgedit/svgcanvas/common/util.js'
+import { transformPoint } from '@svgedit/svgcanvas/core/math.js'
 
 const { $id, $click, decode64 } = SvgCanvas
+
+const ZOOM_MIN = 0.01
+const ZOOM_MAX = 64
 
 /**
  *
@@ -318,6 +323,7 @@ class Editor extends EditorStartup {
     this.leftPanel = new LeftPanel(this)
     this.bottomPanel = new BottomPanel(this)
     this.topPanel = new TopPanel(this)
+    this.rightPanel = new RightPanel(this)
     this.layersPanel = new LayersPanel(this)
     this.mainMenu = new MainMenu(this)
     // makes svgEditor accessible as a global variable
@@ -978,6 +984,73 @@ class Editor extends EditorStartup {
     this.svgCanvas.setCurrentZoom(multiplier)
     this.zoomDone()
     this.updateCanvas(true)
+  }
+
+  /**
+   * Zoom the artboard so the content point under the cursor stays fixed.
+   * @param {number} clientX - Pointer X in viewport coordinates
+   * @param {number} clientY - Pointer Y in viewport coordinates
+   * @param {number} newZoom - Absolute zoom level (1 = 100%)
+   * @returns {void}
+   */
+  zoomTowardCursor (clientX, clientY, newZoom) {
+    const oldZoom = this.svgCanvas.getZoom()
+    const zoomlevel = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, newZoom))
+    if (!Number.isFinite(zoomlevel) || Math.abs(zoomlevel - oldZoom) < 1e-9) {
+      return
+    }
+
+    const factor = zoomlevel / oldZoom
+    const workarea = this.workarea
+    const svgContent = $id('svgcontent')
+    const rootGroup = svgContent?.querySelector('g')
+    const screenCTM = rootGroup?.getScreenCTM?.()
+
+    if (!screenCTM || !workarea) {
+      this.svgCanvas.setCurrentZoom(zoomlevel)
+      if ($id('zoom')) $id('zoom').value = (zoomlevel * 100).toFixed(1)
+      this.zoomDone()
+      this.updateCanvas(true)
+      return
+    }
+
+    const rootSctm = screenCTM.inverse()
+    const pt = transformPoint(clientX, clientY, rootSctm)
+    const rulerwidth = this.configObj.curConfig.showRulers ? 16 : 0
+    const waRect = workarea.getBoundingClientRect()
+    const editorFullW = workarea.clientWidth
+    const editorFullH = workarea.clientHeight
+    const contentLeft = waRect.left + rulerwidth
+    const contentTop = waRect.top + rulerwidth
+
+    const topLeftOld = transformPoint(contentLeft, contentTop, rootSctm)
+    const topLeftNew = {
+      x: pt.x - (pt.x - topLeftOld.x) / factor,
+      y: pt.y - (pt.y - topLeftOld.y) / factor
+    }
+    const newCtr = {
+      x: topLeftNew.x * zoomlevel - rulerwidth + editorFullW / 2,
+      y: topLeftNew.y * zoomlevel - rulerwidth + editorFullH / 2
+    }
+
+    this.svgCanvas.setCurrentZoom(zoomlevel)
+    if ($id('zoom')) $id('zoom').value = (zoomlevel * 100).toFixed(1)
+    this.zoomDone()
+    this.updateCanvas(false, newCtr)
+  }
+
+  /**
+   * Apply wheel/trackpad zoom toward the event cursor.
+   * @param {WheelEvent} e
+   * @returns {void}
+   */
+  zoomTowardCursorFromWheel (e) {
+    const oldZoom = this.svgCanvas.getZoom()
+    // Discrete notches (~100) vs pixel/trackpad deltas
+    const intensity = e.deltaMode === 1 ? 0.08 : (e.deltaMode === 2 ? 0.4 : 0.0018)
+    const factor = Math.exp(-e.deltaY * intensity)
+    const clamped = Math.min(1.25, Math.max(0.8, factor))
+    this.zoomTowardCursor(e.clientX, e.clientY, oldZoom * clamped)
   }
 
   /**

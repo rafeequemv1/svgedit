@@ -115,7 +115,7 @@ export default {
         // Add the context panel and its handler(s)
         const panelTemplate = document.createElement('template')
         panelTemplate.innerHTML = `
-          <div id="star_panel">
+          <div id="star_panel" class="selected_panel right_panel_section" style="display:none">
             <se-spin-input id="starNumPoints" label="${label0}" min=1 step=1 value=5 title="${title0}">
             </se-spin-input>
             <se-spin-input id="RadiusMultiplier" label="${label1}" min=1 step=2.5 value=3 title="${title1}">
@@ -123,13 +123,13 @@ export default {
             <se-spin-input id="radialShift" min=0 step=1 value=0 label="${label2}" title="${title2}">
             </se-spin-input>
           </div>
-          <div id="polygon_panel">
+          <div id="polygon_panel" class="selected_panel right_panel_section" style="display:none">
             <se-spin-input size="3" id="polySides" min=1 step=1 value=5 label="${label3}" title="${title3}">
             </se-spin-input>
           </div>
         `
         // add handlers for the panel
-        $id('tools_top').appendChild(panelTemplate.content.cloneNode(true))
+        $id('right_properties_extensions').appendChild(panelTemplate.content.cloneNode(true))
         // don't display the panels on start
         showPanel(false, 'star')
         showPanel(false, 'polygon')

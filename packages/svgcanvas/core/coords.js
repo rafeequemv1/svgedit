@@ -518,6 +518,21 @@ export const remapElement = (selected, changes, m) => {
           // Fallback to 'd' attribute if setPathData is unavailable or throws.
         }
       }
+
+      // Keep Live Corner source points in sync when transforms are baked into `d`
+      const cornerPts = selected.getAttribute('data-corner-points')
+      if (cornerPts) {
+        const nums = cornerPts.trim().split(/[\s,]+/).map(Number)
+        const out = []
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          if (!Number.isFinite(nums[i]) || !Number.isFinite(nums[i + 1])) continue
+          const p = remap(nums[i], nums[i + 1])
+          out.push(`${p.x},${p.y}`)
+        }
+        if (out.length) {
+          selected.setAttribute('data-corner-points', out.join(' '))
+        }
+      }
       break
     }
     default:

@@ -17,6 +17,7 @@ const targets = [
   ['src/editor/images', 'images'],
   ['src/editor/components/jgraduate/images', 'components/jgraduate/images'],
   ['src/editor/extensions', 'extensions'],
+  ['public/ghostscript', 'ghostscript'],
   // Test harness assets for Playwright (unit-style tests in browser)
   ['src/editor/tests', 'tests'],
   ['node_modules/pathseg/pathseg.js', 'tests/vendor/pathseg/pathseg.js']

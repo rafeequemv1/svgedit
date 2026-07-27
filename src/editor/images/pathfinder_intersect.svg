@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Intersect: only overlap region -->
+  <rect x="3" y="5" width="11" height="11" fill="#fff" fill-opacity=".45"/>
+  <rect x="10" y="8" width="11" height="11" fill="#fff" fill-opacity=".45"/>
+  <path fill="#f9ba00" d="M10 8h4v8h-4z"/>
+</svg>

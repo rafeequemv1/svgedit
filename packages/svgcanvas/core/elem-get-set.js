@@ -10,10 +10,16 @@ import {
   getVisibleElements, getStrokedBBoxDefaultVisible, findDefs,
   walkTree, getHref, setHref, getElement
 } from './utilities.js'
+import { getTextElementContent, getTextAndStyles, normalizeBaselineShift, serializeTextWithStyles, serializeTextElement } from './text-content.js'
 import {
   convertToNum
 } from './units.js'
 import { getParents } from '../common/util.js'
+import {
+  applyCornerRadius,
+  getCornerRadius,
+  supportsCornerRadius
+} from './corner-radius.js'
 
 let svgCanvas = null
 
@@ -32,6 +38,8 @@ export const init = (canvas) => {
   svgCanvas.addTextDecoration = addTextDecorationMethod // Adds the given value to the text decoration
   svgCanvas.removeTextDecoration = removeTextDecorationMethod // Removes the given value from the text decoration
   svgCanvas.setTextAnchor = setTextAnchorMethod // Set the new text anchor.
+  svgCanvas.getBaselineShift = getBaselineShiftMethod // Current baseline-shift (super/sub/baseline)
+  svgCanvas.setBaselineShift = setBaselineShiftMethod // Set superscript / subscript / normal
   svgCanvas.setLetterSpacing = setLetterSpacingMethod // Set the new letter spacing.
   svgCanvas.setWordSpacing = setWordSpacingMethod // Set the new word spacing.
   svgCanvas.setTextLength = setTextLengthMethod // Set the new text length.
@@ -46,7 +54,9 @@ export const init = (canvas) => {
   svgCanvas.setTextContent = setTextContentMethod // Updates the text element with the given string.
   svgCanvas.setImageURL = setImageURLMethod // Sets the new image URL for the selected image element
   svgCanvas.setLinkURL = setLinkURLMethod // Sets the new link URL for the selected anchor element.
-  svgCanvas.setRectRadius = setRectRadiusMethod // Sets the `rx` and `ry` values to the selected `rect` element
+  svgCanvas.setRectRadius = setRectRadiusMethod // Sets corner radius on rect / polygon / rounded path
+  svgCanvas.getCornerRadius = () => getCornerRadius(svgCanvas.getSelectedElements()[0])
+  svgCanvas.supportsCornerRadius = (elem) => supportsCornerRadius(elem)
   svgCanvas.makeHyperlink = makeHyperlinkMethod // Wraps the selected element(s) in an anchor element or converts group to one.
   svgCanvas.removeHyperlink = removeHyperlinkMethod
   svgCanvas.setSegType = setSegTypeMethod // Sets the new segment type to the selected segment(s).
@@ -662,7 +672,7 @@ const getSelectedTextElements = () => {
 const getChangedTextElements = (textElements, attr, newValue) => {
   const normalizedValue = String(newValue)
   return textElements.filter((elem) => {
-    const oldValue = attr === '#text' ? elem.textContent : elem.getAttribute(attr)
+    const oldValue = attr === '#text' ? serializeTextElement(elem) : elem.getAttribute(attr)
     return (oldValue || '') !== normalizedValue
   })
 }
@@ -803,6 +813,85 @@ const setTextAnchorMethod = (value) => {
     svgCanvas.changeSelectedAttribute('text-anchor', value, changedTextElements)
   }
   notifyTextChange(changedTextElements)
+}
+
+/**
+ * Baseline of the current text selection (or baseline if none).
+ * @function module:svgcanvas.SvgCanvas#getBaselineShift
+ * @returns {'super'|'sub'|'baseline'}
+ */
+const getBaselineShiftMethod = () => {
+  const textElements = getSelectedTextElements()
+  if (!textElements.length) return 'baseline'
+  const elem = textElements[0]
+  const sel = svgCanvas.textActions.getInputSelection?.()
+  const { text, styles } = getTextAndStyles(elem)
+  if (sel && sel.start !== sel.end) {
+    const slice = []
+    for (let i = sel.start; i < sel.end; i++) {
+      if (text[i] === '\n') continue
+      slice.push(styles[i] || 'baseline')
+    }
+    if (slice.length && slice.every(s => s === 'super')) return 'super'
+    if (slice.length && slice.every(s => s === 'sub')) return 'sub'
+  }
+  return 'baseline'
+}
+
+/**
+ * Apply superscript / subscript to the selected characters only.
+ * @function module:svgcanvas.SvgCanvas#setBaselineShift
+ * @param {'super'|'sub'|'baseline'|string} value
+ * @returns {void}
+ */
+const setBaselineShiftMethod = (value) => {
+  const textElements = getSelectedTextElements()
+  if (!textElements.length) return
+
+  const elem = textElements[0]
+  const normalized = normalizeBaselineShift(value)
+  const sel = svgCanvas.textActions.getInputSelection?.()
+
+  // Require an in-text selection — never shift the whole text box
+  if (!sel || sel.start === sel.end) {
+    return
+  }
+
+  const { text, styles } = getTextAndStyles(elem)
+  const next = styles.slice()
+  const from = Math.min(sel.start, sel.end)
+  const to = Math.max(sel.start, sel.end)
+
+  if (normalized === 'baseline') {
+    for (let i = from; i < to; i++) {
+      if (text[i] !== '\n') next[i] = 'baseline'
+    }
+  } else {
+    let allAlready = true
+    for (let i = from; i < to; i++) {
+      if (text[i] === '\n') continue
+      if (next[i] !== normalized) {
+        allAlready = false
+        break
+      }
+    }
+    for (let i = from; i < to; i++) {
+      if (text[i] === '\n') continue
+      next[i] = allAlready ? 'baseline' : normalized
+    }
+  }
+
+  const serialized = serializeTextWithStyles(text, next)
+  svgCanvas.changeSelectedAttribute('#text', serialized, [elem])
+  if (elem.hasAttribute('baseline-shift')) {
+    elem.removeAttribute('baseline-shift')
+  }
+
+  if (svgCanvas.getCurrentMode() === 'textedit') {
+    svgCanvas.textActions.init()
+    svgCanvas.textActions.setInputSelection?.(from, to)
+  }
+  notifyTextChange([elem])
 }
 
 /**
@@ -958,7 +1047,7 @@ const setFontSizeMethod = (val) => {
 const getTextMethod = () => {
   const selectedElements = svgCanvas.getSelectedElements()
   const selected = selectedElements[0]
-  return (selected) ? selected.textContent : ''
+  return (selected) ? getTextElementContent(selected) : ''
 }
 
 /**
@@ -1084,30 +1173,50 @@ const setLinkURLMethod = (val) => {
 * @returns {void}
 */
 const setRectRadiusMethod = (val) => {
-  const { ChangeElementCommand } = svgCanvas.history
+  const { ChangeElementCommand, RemoveElementCommand, InsertElementCommand, BatchCommand } =
+    svgCanvas.history
   const selectedElements = svgCanvas.getSelectedElements()
   const selected = selectedElements[0]
-  if (selected?.tagName !== 'rect') { return }
+  if (!supportsCornerRadius(selected)) { return }
 
   const radius = Number(val)
   if (!Number.isFinite(radius) || radius < 0) {
     return
   }
 
-  const oldRx = selected.getAttribute('rx')
-  const oldRy = selected.getAttribute('ry')
-  const currentRx = Number(oldRx)
-  const currentRy = Number(oldRy)
-  const hasCurrentRx = oldRx !== null && Number.isFinite(currentRx)
-  const hasCurrentRy = oldRy !== null && Number.isFinite(currentRy)
-  const already = (radius === 0 && oldRx === null && oldRy === null) ||
-    (hasCurrentRx && hasCurrentRy && currentRx === radius && currentRy === radius)
-  if (already) { return }
+  if (Math.abs(getCornerRadius(selected) - radius) < 1e-6) { return }
 
-  selected.setAttribute('rx', radius)
-  selected.setAttribute('ry', radius)
-  svgCanvas.addCommandToHistory(new ChangeElementCommand(selected, { rx: oldRx, ry: oldRy }, 'Radius'))
-  svgCanvas.call('changed', [selected])
+  const snapshot = selected.tagName === 'rect'
+    ? { rx: selected.getAttribute('rx'), ry: selected.getAttribute('ry') }
+    : selected.tagName === 'polygon'
+      ? { points: selected.getAttribute('points') }
+      : {
+          d: selected.getAttribute('d'),
+          'data-corner-radius': selected.getAttribute('data-corner-radius'),
+          'data-corner-points': selected.getAttribute('data-corner-points')
+        }
+
+  const result = applyCornerRadius(selected, radius)
+  if (!result) { return }
+
+  const batchCmd = new BatchCommand('Corner Radius')
+  if (result.replacedFrom) {
+    batchCmd.addSubCommand(
+      new RemoveElementCommand(result.replacedFrom, result.nextSibling, result.parent)
+    )
+    batchCmd.addSubCommand(new InsertElementCommand(result.elem))
+    svgCanvas.selectorManager.releaseSelector(selected)
+    svgCanvas.setSelectedElements(0, result.elem)
+    svgCanvas.selectorManager.requestSelector(result.elem).showGrips(true)
+    svgCanvas.call('changed', [result.elem])
+  } else {
+    batchCmd.addSubCommand(new ChangeElementCommand(result.elem, snapshot, 'Radius'))
+    svgCanvas.selectorManager.requestSelector(result.elem)?.resize()
+    svgCanvas.call('changed', [result.elem])
+  }
+  if (!batchCmd.isEmpty()) {
+    svgCanvas.addCommandToHistory(batchCmd)
+  }
 }
 
 /**

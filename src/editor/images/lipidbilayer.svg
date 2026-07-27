@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 51.04 49.47">
+  <defs>
+    <style>
+      .bounds { fill: none; }
+      .membrane { fill: #5eb8d9; opacity: 0.35; }
+      .head { fill: #f9ba00; stroke: #fff; stroke-width: 1.5; }
+      .tail { fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; }
+    </style>
+  </defs>
+  <rect class="bounds" width="51.04" height="49.47"/>
+  <path class="membrane" d="M8,22 Q25.5,18 43,22 L43,28 Q25.5,32 8,28 Z"/>
+  <circle class="head" cx="12" cy="20" r="3.5"/>
+  <circle class="head" cx="22" cy="19" r="3.5"/>
+  <circle class="head" cx="32" cy="20" r="3.5"/>
+  <circle class="head" cx="42" cy="21" r="3.5"/>
+  <circle class="head" cx="12" cy="30" r="3.5"/>
+  <circle class="head" cx="22" cy="31" r="3.5"/>
+  <circle class="head" cx="32" cy="30" r="3.5"/>
+  <circle class="head" cx="42" cy="29" r="3.5"/>
+  <line class="tail" x1="12" y1="23" x2="10.5" y2="27"/>
+  <line class="tail" x1="12" y1="23" x2="13.5" y2="27"/>
+  <line class="tail" x1="22" y1="22" x2="20.5" y2="27"/>
+  <line class="tail" x1="22" y1="22" x2="23.5" y2="27"/>
+  <line class="tail" x1="32" y1="23" x2="30.5" y2="27"/>
+  <line class="tail" x1="32" y1="23" x2="33.5" y2="27"/>
+  <line class="tail" x1="42" y1="24" x2="40.5" y2="27"/>
+  <line class="tail" x1="42" y1="24" x2="43.5" y2="27"/>
+  <line class="tail" x1="12" y1="27" x2="10.5" y2="23"/>
+  <line class="tail" x1="12" y1="27" x2="13.5" y2="23"/>
+  <line class="tail" x1="22" y1="28" x2="20.5" y2="23"/>
+  <line class="tail" x1="22" y1="28" x2="23.5" y2="23"/>
+  <line class="tail" x1="32" y1="27" x2="30.5" y2="23"/>
+  <line class="tail" x1="32" y1="27" x2="33.5" y2="23"/>
+  <line class="tail" x1="42" y1="26" x2="40.5" y2="23"/>
+  <line class="tail" x1="42" y1="26" x2="43.5" y2="23"/>
+</svg>

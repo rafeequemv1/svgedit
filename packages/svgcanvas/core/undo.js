@@ -11,6 +11,9 @@ import {
   getRotationAngle, getBBox as utilsGetBBox, setHref, getStrokedBBoxDefaultVisible
 } from './utilities.js'
 import {
+  setTextElementContent, serializeTextElement
+} from './text-content.js'
+import {
   isGecko
 } from '../common/browser.js'
 import {
@@ -189,12 +192,12 @@ export const changeSelectedAttributeNoUndoMethod = (attr, newValue, elems) => {
       continue
     }
 
-    let oldval = attr === '#text' ? elem.textContent : elem.getAttribute(attr)
+    let oldval = attr === '#text' ? serializeTextElement(elem) : elem.getAttribute(attr)
     if (!oldval) { oldval = '' }
     if (oldval !== String(newValue)) {
       if (attr === '#text') {
         // const oldW = utilsGetBBox(elem).width;
-        elem.textContent = newValue
+        setTextElementContent(elem, newValue)
 
         // FF bug occurs on on rotated elements
         if ((/rotate/).test(elem.getAttribute('transform'))) {
@@ -209,6 +212,14 @@ export const changeSelectedAttributeNoUndoMethod = (attr, newValue, elems) => {
         // (e.g. "10pt", "2px") instead of silently truncating it to a bare number.
         const asNumber = Number(newValue)
         elem.setAttribute(attr, Number.isNaN(asNumber) ? newValue : asNumber)
+        // Keep multiline tspans aligned when the text anchor x changes
+        if (attr === 'x' && elem.tagName === 'text') {
+          for (const child of elem.children) {
+            if (child.localName === 'tspan') {
+              child.setAttribute('x', elem.getAttribute('x'))
+            }
+          }
+        }
       } else if (typeof newValue === 'number') {
         elem.setAttribute(attr, newValue)
       } else {

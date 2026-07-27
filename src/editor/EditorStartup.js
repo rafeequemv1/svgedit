@@ -129,6 +129,7 @@ class EditorStartup {
 
     this.leftPanel.init()
     this.bottomPanel.init()
+    this.rightPanel.init()
     this.topPanel.init()
     this.layersPanel.init()
     this.mainMenu.init()
@@ -269,8 +270,11 @@ class EditorStartup {
       eventNames.split(' ').forEach((eventName) => element.addEventListener(eventName, listener, false))
     }
 
-    addListenerMulti($id('text'), 'keyup input', (evt) => {
-      this.svgCanvas.setTextContent(evt.currentTarget.value)
+    addListenerMulti($id('text'), 'keyup input select click mouseup', (evt) => {
+      if (evt.type === 'keyup' || evt.type === 'input') {
+        this.svgCanvas.setTextContent(evt.currentTarget.value)
+      }
+      this.svgCanvas.textActions.rememberInputSelection?.()
     })
 
     $id('link_url').addEventListener('change', (evt) => {
@@ -329,12 +333,14 @@ class EditorStartup {
       return true
     })
 
-    // preventing browser's scaling with Ctrl+wheel
+    // Ctrl/Meta(+Alt/Shift)+wheel → artboard zoom toward cursor (block browser page zoom)
+    const isZoomWheel = (e) => e.ctrlKey || e.metaKey || e.altKey || e.shiftKey
+
     this.$container.addEventListener('wheel', (e) => {
-      if (e.ctrlKey) {
+      if (isZoomWheel(e)) {
         e.preventDefault()
       }
-    })
+    }, { passive: false })
 
     window.addEventListener('mouseup', (evt) => {
       this.enableToolCancel = true
@@ -362,15 +368,15 @@ class EditorStartup {
       }
     })
 
-    // Add a new shortcut for zoom in/out : Alt + Wheels
+    // Zoom toward cursor: Ctrl/Cmd, Alt, or Shift + scroll (trackpad pinch often sends ctrlKey)
     this.workarea.addEventListener('wheel', (e) => {
-      if (e.altKey) {
-        e.preventDefault()
-        this.svgCanvas.setZoom(e.deltaY > 0 ? this.svgCanvas.getZoom() * 0.9 : this.svgCanvas.getZoom() * 1.1, true)
-        this.updateCanvas(true)
-        $id('zoom').value = (this.svgCanvas.getZoom() * 100).toFixed(1)
+      if (!isZoomWheel(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (typeof this.zoomTowardCursorFromWheel === 'function') {
+        this.zoomTowardCursorFromWheel(e)
       }
-    })
+    }, { passive: false })
 
     document.addEventListener('keyup', (e) => {
       if (e.target.nodeName !== 'BODY') return
@@ -401,7 +407,7 @@ class EditorStartup {
       inp.blur()
     }
 
-    const liElems = this.$svgEditor.querySelectorAll('button, select, input:not(#text)')
+    const liElems = this.$svgEditor.querySelectorAll('button, select, input:not(#text), textarea:not(#text)')
     const self = this
     Array.prototype.forEach.call(liElems, function (el) {
       el.addEventListener('focus', (e) => {
@@ -516,6 +522,9 @@ class EditorStartup {
           break
         case 'copy':
           this.copySelected()
+          break
+        case 'duplicate':
+          this.svgCanvas.cloneSelectedElements(20, 20)
           break
         case 'paste':
           this.svgCanvas.pasteElements()
@@ -751,6 +760,7 @@ class EditorStartup {
     const mode = this.svgCanvas.getMode()
 
     this.setCursorStyle(mode)
+    this.rightPanel?.updatePencilPanel?.()
   }
 
   /**
@@ -792,7 +802,7 @@ class EditorStartup {
   cancelTool () {
     const mode = this.svgCanvas.getMode()
     // list of modes that are currently save to cancel
-    const modesToCancel = ['zoom', 'rect', 'square', 'circle', 'ellipse', 'line', 'text', 'star', 'polygon', 'shapelib', 'image']
+    const modesToCancel = ['zoom', 'rect', 'square', 'circle', 'ellipse', 'line', 'text', 'star', 'polygon', 'shapelib', 'image', 'curvedarrow', 'hydrogel', 'dna', 'lipidbilayer']
     if (modesToCancel.includes(mode)) {
       this.leftPanel.clickSelect()
     }

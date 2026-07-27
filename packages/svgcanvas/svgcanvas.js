@@ -164,7 +164,9 @@ class SvgCanvas {
       // Default configuration options
       show_outside_canvas: true,
       selectNew: true,
-      dimensions: [640, 480]
+      dimensions: [640, 480],
+      // Pencil freehand → Paper.js simplify strength (0 = raw, 50 ≈ default, 100 = heavy)
+      freehandSmoothing: 50
     }
     // Update config with new one if given
     if (config) {

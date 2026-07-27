@@ -1,0 +1,289 @@
+<div id="sidepanels">
+  <div id="right_panel_tabs">
+    <button type="button" class="right_tab_btn active" data-tab="properties" id="tab_btn_properties"></button>
+    <button type="button" class="right_tab_btn" data-tab="align" id="tab_btn_align"></button>
+    <button type="button" class="right_tab_btn" data-tab="layers" id="tab_btn_layers"></button>
+  </div>
+  <div id="sidepanel_content">
+    <div id="tab_properties" class="right_tab_panel active">
+      <div id="cur_context_panel"></div>
+
+      <!-- Actions -->
+      <div class="selected_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="actions"></div>
+        <div class="prop-toolbar">
+          <se-button id="tool_clone" title="tools.clone" shortcut="D" src="clone.svg"></se-button>
+          <se-button id="tool_delete" title="tools.del" shortcut="Delete/Backspace" src="delete.svg"></se-button>
+          <span class="prop-toolbar-sep"></span>
+          <se-button id="tool_move_top" title="tools.move_top" shortcut="Ctrl+Shift+]" src="move_top.svg"></se-button>
+          <se-button id="tool_move_bottom" title="tools.move_bottom" shortcut="Ctrl+Shift+[" src="move_bottom.svg"></se-button>
+          <span class="prop-toolbar-sep"></span>
+          <se-button id="tool_flip_h" title="tools.flip_horizontal" src="flip_horizontal.svg"></se-button>
+          <se-button id="tool_flip_v" title="tools.flip_vertical" src="flip_vertical.svg"></se-button>
+          <span class="prop-toolbar-sep"></span>
+          <se-button id="tool_topath" title="tools.to_path" src="to_path.svg"></se-button>
+          <se-button id="tool_reorient" title="tools.reorient_path" src="reorient.svg"></se-button>
+          <se-button id="tool_make_link" title="tools.make_link" src="globe_link.svg"></se-button>
+        </div>
+      </div>
+
+      <!-- Multi-select actions -->
+      <div class="multiselected_actions_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="actions"></div>
+        <div class="prop-toolbar">
+          <se-button id="tool_clone_multi" title="tools.clone" shortcut="C" src="clone.svg"></se-button>
+          <se-button id="tool_delete_multi" title="tools.del" shortcut="Delete/Backspace" src="delete.svg"></se-button>
+          <se-button id="tool_group_elements" title="tools.group_elements" shortcut="G" src="group_elements.svg"></se-button>
+          <se-button id="tool_make_link_multi" title="tools.make_link" src="globe_link.svg"></se-button>
+        </div>
+      </div>
+
+      <!-- Transform: position -->
+      <div class="xy_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="transform"></div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="selected_x" data-attr="x" size="4" type="text" label="properties.x_label" title="properties.pos_x"></se-spin-input>
+          <se-spin-input id="selected_y" data-attr="y" size="4" type="text" label="properties.y_label" title="properties.pos_y"></se-spin-input>
+        </div>
+      </div>
+
+      <!-- Transform: rect size -->
+      <div class="rect_panel prop-section prop-section-flush" style="display:none">
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="rect_width" data-attr="width" size="4" label="properties.w_label" title="properties.rect_width"></se-spin-input>
+          <se-spin-input id="rect_height" data-attr="height" size="4" label="properties.h_label" title="properties.rect_height"></se-spin-input>
+        </div>
+      </div>
+      <div class="corner_radius_panel prop-section prop-section-flush" style="display:none">
+        <div class="prop-row">
+          <se-spin-input id="rect_rx" min=0 max=1000 step=1 size="3" title="properties.corner_radius" data-attr="Corner Radius" src="c_radius.svg"></se-spin-input>
+        </div>
+      </div>
+
+      <!-- Transform: image size -->
+      <div class="image_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="image"></div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="image_width" data-attr="width" size="4" type="text" label="properties.w_label" title="properties.image_width"></se-spin-input>
+          <se-spin-input id="image_height" data-attr="height" size="4" type="text" label="properties.h_label" title="properties.image_height"></se-spin-input>
+        </div>
+        <div class="prop-row prop-row-stack">
+          <se-button id="tool_image_upload" title="properties.image_upload" src="importImg.svg"></se-button>
+          <se-input id="image_url" data-attr="image_url" size="15" label="properties.image_url"></se-input>
+        </div>
+      </div>
+
+      <!-- Transform: circle -->
+      <div class="circle_panel prop-section prop-section-flush" style="display:none">
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="circle_cx" data-attr="cx" size="4" label="properties.cx_label"></se-spin-input>
+          <se-spin-input id="circle_cy" data-attr="cy" size="4" label="properties.cy_label"></se-spin-input>
+        </div>
+        <div class="prop-row">
+          <se-spin-input id="circle_r" data-attr="r" size="4" label="properties.r_label"></se-spin-input>
+        </div>
+      </div>
+
+      <!-- Transform: ellipse -->
+      <div class="ellipse_panel prop-section prop-section-flush" style="display:none">
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="ellipse_cx" data-attr="cx" size="4" title="properties.ellipse_cx" label="properties.cx_label"></se-spin-input>
+          <se-spin-input id="ellipse_cy" data-attr="cy" size="4" title="properties.ellipse_cy" label="properties.cy_label"></se-spin-input>
+        </div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="ellipse_rx" data-attr="rx" size="4" title="properties.ellipse_rx" label="properties.rx_label"></se-spin-input>
+          <se-spin-input id="ellipse_ry" data-attr="ry" size="4" title="properties.ellipse_ry" label="properties.ry_label"></se-spin-input>
+        </div>
+      </div>
+
+      <!-- Transform: line -->
+      <div class="line_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="line"></div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="line_x1" data-attr="x1" size="4" title="properties.line_x1" label="properties.x1_label"></se-spin-input>
+          <se-spin-input id="line_y1" data-attr="y1" size="4" title="properties.line_y1" label="properties.y1_label"></se-spin-input>
+        </div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="line_x2" data-attr="x2" size="4" title="properties.line_x2" label="properties.x2_label"></se-spin-input>
+          <se-spin-input id="line_y2" data-attr="y2" size="4" title="properties.line_y2" label="properties.y2_label"></se-spin-input>
+        </div>
+      </div>
+
+      <!-- Pencil / freehand tool options -->
+      <div id="pencil_panel" class="pencil_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="pencil"></div>
+        <div class="prop-row">
+          <se-range-input id="freehand_smoothing" label="properties.freehand_smoothing" min="0" max="100" step="1" value="50" title="properties.freehand_smoothing_title" decimals="0"></se-range-input>
+        </div>
+      </div>
+
+      <!-- Appearance -->
+      <div class="selected_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="appearance"></div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input size="3" id="angle" min=-180 max=180 step=5 src="angle.svg" title="properties.angle"></se-spin-input>
+          <se-spin-input size="2" id="blur" min=0 max=100 step=5 src="blur.svg" title="properties.blur"></se-spin-input>
+        </div>
+      </div>
+
+      <!-- Character / Type -->
+      <div class="text_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="character"></div>
+        <div class="prop-row prop-row-stack">
+          <se-select id="tool_font_family" label="properties.font_family_label" options="properties.serif,properties.sans_serif,properties.cursive,properties.fantasy,properties.monospace,properties.courier,properties.helvetica,properties.times" values="Serif::Sans-serif::Cursive::Fantasy::Monospace::Courier::Helvetica::Times"></se-select>
+        </div>
+        <div class="prop-row">
+          <se-spin-input size="2" id="font_size" min=1 max=1000 step=1 title="properties.font_size" src="fontsize.svg"></se-spin-input>
+        </div>
+        <div class="prop-toolbar prop-toolbar-labeled">
+          <span class="prop-label" data-prop-section="style"></span>
+          <se-button id="tool_bold" title="properties.bold" src="bold.svg" shortcut="B"></se-button>
+          <se-button id="tool_italic" title="properties.italic" src="italic.svg" shortcut="I"></se-button>
+          <se-button id="tool_text_decoration_underline" title="properties.text_decoration_underline" src="text_decoration_underline.svg"></se-button>
+          <se-button id="tool_text_decoration_linethrough" title="properties.text_decoration_linethrough" src="text_decoration_linethrough.svg"></se-button>
+          <se-button id="tool_text_decoration_overline" title="properties.text_decoration_overline" src="text_decoration_overline.svg"></se-button>
+          <span class="prop-toolbar-sep"></span>
+          <se-button id="tool_text_superscript" title="properties.text_superscript" src="text_superscript.svg"></se-button>
+          <se-button id="tool_text_subscript" title="properties.text_subscript" src="text_subscript.svg"></se-button>
+        </div>
+      </div>
+
+      <!-- Paragraph -->
+      <div class="text_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="paragraph"></div>
+        <div class="prop-toolbar">
+          <se-button id="tool_text_align_left" title="properties.text_align_left" src="align_left.svg"></se-button>
+          <se-button id="tool_text_align_center" title="properties.text_align_center" src="align_center.svg"></se-button>
+          <se-button id="tool_text_align_right" title="properties.text_align_right" src="align_right.svg"></se-button>
+        </div>
+        <textarea id="text" class="prop-text-content" rows="3" spellcheck="false" placeholder=""></textarea>
+      </div>
+
+      <!-- Typography spacing -->
+      <div class="text_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="spacing"></div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input size="2" id="tool_letter_spacing" min=0 max=100 step=1 title="properties.text_letter_spacing" src="letter_spacing.svg"></se-spin-input>
+          <se-spin-input size="2" id="tool_word_spacing" min=0 max=1000 step=1 title="properties.text_word_spacing" src="word_spacing.svg"></se-spin-input>
+        </div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input size="2" id="tool_text_length" min=0 max=1000 step=1 title="properties.text_length" src="text_length.svg"></se-spin-input>
+          <se-select id="tool_length_adjust" label="properties.text_length_adjust" options="properties.text_length_adjust_spacing,properties.text_length_adjust_spacing_and_glyphs" values="spacing::spacingAndGlyphs"></se-select>
+        </div>
+      </div>
+
+      <!-- Path nodes -->
+      <div class="path_node_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="path"></div>
+        <div class="prop-toolbar">
+          <se-button id="tool_node_link" title="tools.node_link" src="tool_node_link.svg" pressed></se-button>
+          <se-button id="tool_node_clone" title="tools.node_clone" src="tool_node_clone.svg"></se-button>
+          <se-button id="tool_node_delete" title="tools.node_delete" src="tool_node_delete.svg"></se-button>
+          <span class="prop-toolbar-sep"></span>
+          <se-button id="tool_openclose_path" title="tools.openclose_path" src="tool_openclose_path.svg"></se-button>
+          <se-button id="tool_add_subpath" title="tools.add_subpath" src="tool_add_subpath.svg"></se-button>
+        </div>
+        <div class="prop-row prop-row-2">
+          <se-spin-input id="path_node_x" data-attr="x" size="4" title="properties.node_x" label="properties.x_label"></se-spin-input>
+          <se-spin-input id="path_node_y" data-attr="y" size="4" title="properties.node_y" label="properties.y_label"></se-spin-input>
+        </div>
+        <div class="prop-row">
+          <se-select id="seg_type" title="properties.seg_type" label="" options="properties.straight_segments,properties.curve_segments" values="4::6"></se-select>
+        </div>
+      </div>
+
+      <!-- Group / Symbol / Link -->
+      <div class="g_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="group"></div>
+        <div class="prop-toolbar">
+          <se-button id="tool_ungroup" title="tools.ungroup" src="ungroup.svg"></se-button>
+        </div>
+      </div>
+      <div class="container_panel prop-section" style="display:none">
+        <div class="prop-row">
+          <se-input id="g_title" data-attr="title" size="8" label="properties.label"></se-input>
+        </div>
+      </div>
+      <div class="use_panel prop-section" style="display:none">
+        <div class="prop-toolbar">
+          <se-button id="tool_unlink_use" title="tools.tool_unlink_use" src="unlink_use.svg"></se-button>
+        </div>
+      </div>
+      <div class="a_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="link"></div>
+        <label id="tool_link_url" class="prop-link-row">
+          <span id="linkLabel" class="icon_label"></span>
+          <input id="link_url" type="text" />
+        </label>
+      </div>
+
+      <!-- Identity -->
+      <div class="selected_panel prop-section prop-section-muted" style="display:none">
+        <div class="prop-header" data-prop-section="identity"></div>
+        <div class="prop-row prop-row-2">
+          <se-input id="elem_id" data-attr="id" size="10" label="properties.id_label" title="properties.id"></se-input>
+          <se-input id="elem_class" data-attr="class" size="10" label="properties.class_label" title="properties.class"></se-input>
+        </div>
+      </div>
+
+      <div id="right_properties_extensions"></div>
+    </div>
+
+    <div id="tab_align" class="right_tab_panel">
+      <p id="align_hint" class="right_panel_hint"></p>
+      <div class="align_single_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="align"></div>
+        <div class="prop-align-grid">
+          <se-list id="tool_position" title="tools.align_to_page" label="" width="22px" height="22px">
+            <se-list-item id="tool_posleft" value="l" title="tools.align_left" src="align_left.svg" img-height="22px"></se-list-item>
+            <se-list-item id="tool_poscenter" value="c" title="tools.align_center" src="align_center.svg" img-height="22px"></se-list-item>
+            <se-list-item id="tool_posright" value="r" title="tools.align_right" src="align_right.svg" img-height="22px"></se-list-item>
+            <se-list-item id="tool_postop" value="t" title="tools.align_top" src="align_top.svg" img-height="22px"></se-list-item>
+            <se-list-item id="tool_posmiddle" value="m" title="tools.align_middle" src="align_middle.svg" img-height="22px"></se-list-item>
+            <se-list-item id="tool_posbottom" value="b" src="align_bottom.svg" title="tools.align_bottom" img-height="22px"></se-list-item>
+            <se-list-item id="tool_poshoriz" value="dh" src="align_distrib_horiz.svg" title="tools.align_distrib_horiz" img-height="22px"></se-list-item>
+            <se-list-item id="tool_posverti" value="dv" src="align_distrib_verti.svg" title="tools.align_distrib_verti" img-height="22px"></se-list-item>
+          </se-list>
+        </div>
+      </div>
+      <div class="align_multi_panel prop-section" style="display:none">
+        <div class="prop-header" data-prop-section="align"></div>
+        <div class="prop-align-grid">
+          <se-button id="tool_align_left" title="tools.align_left" src="align_left.svg"></se-button>
+          <se-button id="tool_align_center" title="tools.align_center" src="align_center.svg"></se-button>
+          <se-button id="tool_align_right" title="tools.align_right" src="align_right.svg"></se-button>
+          <se-button id="tool_align_top" title="tools.align_top" src="align_top.svg"></se-button>
+          <se-button id="tool_align_middle" title="tools.align_middle" src="align_middle.svg"></se-button>
+          <se-button id="tool_align_bottom" title="tools.align_bottom" src="align_bottom.svg"></se-button>
+          <se-button id="tool_align_distrib_horiz" title="tools.align_distrib_horiz" src="align_distrib_horiz.svg"></se-button>
+          <se-button id="tool_align_distrib_verti" title="tools.align_distrib_verti" src="align_distrib_verti.svg"></se-button>
+        </div>
+        <div class="prop-row prop-row-stack">
+          <se-select id="tool_align_relative" label="tools.relativeTo" options="tools.selected_objects,tools.largest_object,tools.smallest_object,tools.page" values="selected::largest::smallest::page"></se-select>
+        </div>
+      </div>
+      <div id="right_align_extensions"></div>
+    </div>
+
+    <div id="tab_layers" class="right_tab_panel">
+      <div id="layerpanel">
+        <se-text id="layersLabel" text="layers.layers"></se-text>
+        <fieldset id="layerbuttons">
+          <se-button id="layer_new" title="layers.new" size="small" src="new.svg"></se-button>
+          <se-button id="layer_delete" title="layers.del" size="small" src="delete.svg"></se-button>
+          <se-button id="layer_rename" title="layers.rename" size="small" src="text.svg"></se-button>
+          <se-button id="layer_up" title="layers.move_up" size="small" src="go_up.svg"></se-button>
+          <se-button id="layer_down" title="layers.move_down" size="small" src="go_down.svg"></se-button>
+          <se-button id="layer_moreopts" title="common.more_opts" size="small" src="context_menu.svg"></se-button>
+        </fieldset>
+        <table id="layerlist">
+          <tr class="layer">
+            <td class="layervis"></td>
+            <td class="layername">Layer 1</td>
+          </tr>
+        </table>
+        <se-select id="selLayerNames" title="layers.move_selected" label="layers.move_elems_to" options="Layer 1" values="layer1" value="layer1" disabled="disabled"></se-select>
+      </div>
+    </div>
+  </div>
+</div>

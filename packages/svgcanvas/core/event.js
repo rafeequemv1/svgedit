@@ -6,7 +6,7 @@
  */
 import {
   assignAttributes, cleanupElement, getElement, getRotationAngle, snapToGrid, walkTree,
-  preventClickDefault, setHref, getBBox
+  preventClickDefault, setHref, getBBox, getStrokedBBoxDefaultVisible
 } from './utilities.js'
 import {
   convertAttrs
@@ -17,10 +17,26 @@ import {
 import * as draw from './draw.js'
 import * as pathModule from './path.js'
 import * as hstry from './history.js'
-import { findPos } from '../../svgcanvas/common/util.js'
+import {
+  init as initAlignGuides,
+  applyAlignmentSnap,
+  showAlignmentGuides,
+  clearAlignmentGuides
+} from './align-guides.js'
+import {
+  applyCornerRadius,
+  getCornerRadius,
+  getMaxCornerRadius,
+  getShapeCornerPoints,
+  polygonSignedArea,
+  radiusFromCornerDrag,
+  radiusFromVertexDrag,
+  supportsCornerRadius
+} from './corner-radius.js'
 
 const {
   InsertElementCommand,
+  RemoveElementCommand,
   BatchCommand,
   ChangeElementCommand
 } = hstry
@@ -35,6 +51,7 @@ let moveSelectionThresholdReached = false
 */
 export const init = (canvas) => {
   svgCanvas = canvas
+  initAlignGuides(canvas)
   svgCanvas.mouseDownEvent = mouseDownEvent
   svgCanvas.mouseMoveEvent = mouseMoveEvent
   svgCanvas.dblClickEvent = dblClickEvent
@@ -137,7 +154,7 @@ const mouseMoveEvent = (evt) => {
   const selectedElements = svgCanvas.getSelectedElements()
   const zoom = svgCanvas.getZoom()
   const svgRoot = svgCanvas.getSvgRoot()
-  const selected = selectedElements[0]
+  let selected = selectedElements[0]
 
   let i
   let xya
@@ -191,6 +208,9 @@ const mouseMoveEvent = (evt) => {
           }
         }
         svgCanvas.hasDragStartTransform = true
+        svgCanvas.dragAlignStartBox = getStrokedBBoxDefaultVisible(
+          selectedElements.filter(Boolean)
+        )
       }
       // we temporarily use a translate on the element(s) being dragged
       // this transform is removed upon mousing up and the element is
@@ -202,6 +222,11 @@ const mouseMoveEvent = (evt) => {
           dx = snapToGrid(dx)
           dy = snapToGrid(dy)
         }
+
+        const alignSnap = applyAlignmentSnap(selectedElements, dx, dy, zoom)
+        dx = alignSnap.dx
+        dy = alignSnap.dy
+        showAlignmentGuides(alignSnap.guides, zoom)
 
         // Enable moving selection only if mouse has been moved at least 4 px in any direction
         // This prevents objects from being accidentally moved when (initially) selected
@@ -396,6 +421,43 @@ const mouseMoveEvent = (evt) => {
       shape.setAttribute('y2', y2)
       break
     }
+    case 'linepoint': {
+      const selected = selectedElements[0]
+      if (!selected || selected.tagName !== 'line') break
+      let px = x
+      let py = y
+      if (svgCanvas.getCurConfig().gridSnapping) {
+        px = snapToGrid(px)
+        py = snapToGrid(py)
+      }
+      if (evt.shiftKey) {
+        const ox = Number(selected.getAttribute(svgCanvas.linePointEnd === 'start' ? 'x2' : 'x1')) || 0
+        const oy = Number(selected.getAttribute(svgCanvas.linePointEnd === 'start' ? 'y2' : 'y1')) || 0
+        xya = snapToAngle(ox, oy, px, py)
+        px = xya.x
+        py = xya.y
+      }
+      if (svgCanvas.linePointEnd === 'start') {
+        selected.setAttribute('x1', px)
+        selected.setAttribute('y1', py)
+      } else {
+        selected.setAttribute('x2', px)
+        selected.setAttribute('y2', py)
+      }
+      svgCanvas.selectorManager.requestSelector(selected).resize()
+      // Keep right-panel spin inputs in sync when present
+      try {
+        const $id = (id) => document.getElementById(id)
+        if (svgCanvas.linePointEnd === 'start') {
+          if ($id('line_x1')) $id('line_x1').value = px
+          if ($id('line_y1')) $id('line_y1').value = py
+        } else {
+          if ($id('line_x2')) $id('line_x2').value = px
+          if ($id('line_y2')) $id('line_y2').value = py
+        }
+      } catch (_) { /* ignore */ }
+      break
+    }
     case 'foreignObject': // fall through
     case 'square':
     case 'rect':
@@ -471,7 +533,9 @@ const mouseMoveEvent = (evt) => {
       // shape.setAttribute('points', dAttr);
       svgCanvas.setEnd('x', realX)
       svgCanvas.setEnd('y', realY)
-      if (svgCanvas.getControllPoint2('x') && svgCanvas.getControllPoint2('y')) {
+      // Always sample once control points are seeded (avoid falsy 0-coordinate check)
+      if (Number.isFinite(svgCanvas.getControllPoint2('x')) &&
+          Number.isFinite(svgCanvas.getControllPoint2('y'))) {
         for (i = 0; i < svgCanvas.getStepCount() - 1; i++) {
           svgCanvas.setParameter(i / svgCanvas.getStepCount())
           svgCanvas.setNextParameter((i + 1) / svgCanvas.getStepCount())
@@ -570,6 +634,68 @@ const mouseMoveEvent = (evt) => {
       svgCanvas.call('transition', selectedElements)
       break
     }
+    case 'cornerradius': {
+      if (!supportsCornerRadius(selected)) { break }
+      box = getBBox(selected)
+      let localX = x
+      let localY = y
+      try {
+        const inv = getMatrix(selected).inverse()
+        const local = transformPoint(x, y, inv)
+        localX = local.x
+        localY = local.y
+      } catch (_) { /* keep canvas coords */ }
+      const shapePts = getShapeCornerPoints(selected)
+      const vIdx = Number(svgCanvas.cornerRadiusDir)
+      let radius
+      if (shapePts.length >= 3 && Number.isFinite(vIdx)) {
+        const n = shapePts.length
+        const i = ((vIdx % n) + n) % n
+        const signedArea = polygonSignedArea(shapePts)
+        radius = radiusFromVertexDrag(
+          shapePts[(i + n - 1) % n],
+          shapePts[i],
+          shapePts[(i + 1) % n],
+          localX,
+          localY,
+          getMaxCornerRadius(selected),
+          signedArea
+        )
+      } else {
+        radius = radiusFromCornerDrag(
+          svgCanvas.cornerRadiusDir,
+          box,
+          localX,
+          localY
+        )
+      }
+      if (evt.shiftKey) {
+        radius = Math.round(radius)
+      }
+      const result = applyCornerRadius(selected, radius)
+      if (!result) { break }
+      if (result.replacedFrom) {
+        svgCanvas.cornerRadiusConverted = {
+          polygon: result.replacedFrom,
+          path: result.elem,
+          nextSibling: result.nextSibling,
+          parent: result.parent
+        }
+        svgCanvas.selectorManager.releaseSelector(selected)
+        svgCanvas.setSelectedElements(0, result.elem)
+        selected = result.elem
+        selectedElements[0] = result.elem
+        svgCanvas.selectorManager.requestSelector(result.elem).showGrips(true)
+      } else {
+        svgCanvas.selectorManager.requestSelector(selected).resize()
+      }
+      const rxInput = document.getElementById('rect_rx')
+      if (rxInput) {
+        rxInput.value = Math.round(getCornerRadius(selected) * 100) / 100
+      }
+      svgCanvas.call('transition', selectedElements)
+      break
+    }
     default:
       // A mode can be defined by an extenstion
       break
@@ -630,6 +756,8 @@ const mouseOutEvent = (evt) => {
 */
 const mouseUpEvent = (evt) => {
   evt.preventDefault()
+  clearAlignmentGuides()
+  svgCanvas.dragAlignStartBox = null
   moveSelectionThresholdReached = false
   if (evt.button === 2) { return }
   if (!svgCanvas.getStarted()) { return }
@@ -659,6 +787,30 @@ const mouseUpEvent = (evt) => {
   svgCanvas.setStarted(false)
   let t
   switch (svgCanvas.getCurrentMode()) {
+    case 'linepoint': {
+      const lineEl = selectedElements[0]
+      if (lineEl?.tagName === 'line' && svgCanvas.linePointStartAttrs) {
+        const old = svgCanvas.linePointStartAttrs
+        const changes = {}
+        ;['x1', 'y1', 'x2', 'y2'].forEach((attr) => {
+          if (String(old[attr]) !== String(lineEl.getAttribute(attr))) {
+            changes[attr] = old[attr]
+          }
+        })
+        if (Object.keys(changes).length) {
+          const { ChangeElementCommand } = svgCanvas.history
+          svgCanvas.undoMgr.addCommandToHistory(new ChangeElementCommand(lineEl, changes))
+          svgCanvas.call('changed', [lineEl])
+        }
+      }
+      svgCanvas.linePointStartAttrs = null
+      svgCanvas.setCurrentMode('select')
+      if (lineEl) {
+        svgCanvas.selectorManager.requestSelector(lineEl).showGrips(true)
+        svgCanvas.selectorManager.requestSelector(lineEl).resize()
+      }
+      break
+    }
     // intentionally fall-through to select here
     case 'resize':
     case 'multiselect':
@@ -810,7 +962,8 @@ const mouseUpEvent = (evt) => {
         factor
       })
       return
-    } case 'fhpath': {
+    }
+    case 'fhpath': {
       // Check that the path contains at least 2 points; a degenerate one-point path
       // causes problems.
       // Webkit ignores how we set the points attribute with commas and uses space
@@ -823,9 +976,13 @@ const mouseUpEvent = (evt) => {
       svgCanvas.setStart({ x: 0, y: 0 })
       svgCanvas.setEnd('x', 0)
       svgCanvas.setEnd('y', 0)
-      const coords = element.getAttribute('points')
+      const coords = element?.getAttribute('points') || ''
+      const pointCount = element?.points?.numberOfItems ?? 0
       const commaIndex = coords.indexOf(',')
-      keep = commaIndex >= 0 ? coords.includes(',', commaIndex + 1) : coords.includes(' ', coords.indexOf(' ') + 1)
+      const hasSecondComma = commaIndex >= 0 && coords.includes(',', commaIndex + 1)
+      const firstSpace = coords.indexOf(' ')
+      const hasSecondSpace = firstSpace >= 0 && coords.includes(' ', firstSpace + 1)
+      keep = pointCount >= 2 || hasSecondComma || hasSecondSpace
       if (keep) {
         element = svgCanvas.pathActions.smoothPolylineIntoPath(element)
       }
@@ -934,7 +1091,46 @@ const mouseUpEvent = (evt) => {
       svgCanvas.recalculateAllSelectedDimensions()
       svgCanvas.call('changed', selectedElements)
       break
-    } default:
+    }
+    case 'cornerradius': {
+      keep = true
+      element = null
+      svgCanvas.setCurrentMode('select')
+      const cur = selectedElements[0]
+      const snap = svgCanvas.cornerRadiusSnapshot
+      const converted = svgCanvas.cornerRadiusConverted
+      const batchCmd = new BatchCommand('Corner Radius')
+      if (converted) {
+        batchCmd.addSubCommand(
+          new RemoveElementCommand(
+            converted.polygon,
+            converted.nextSibling,
+            converted.parent
+          )
+        )
+        batchCmd.addSubCommand(new InsertElementCommand(converted.path))
+      } else if (cur && snap) {
+        const changed = {}
+        Object.keys(snap).forEach((attr) => {
+          const now = cur.getAttribute(attr)
+          if (snap[attr] !== now) {
+            changed[attr] = snap[attr]
+          }
+        })
+        if (Object.keys(changed).length) {
+          batchCmd.addSubCommand(new ChangeElementCommand(cur, changed, 'rx'))
+        }
+      }
+      if (!batchCmd.isEmpty()) {
+        svgCanvas.addCommandToHistory(batchCmd)
+      }
+      svgCanvas.cornerRadiusSnapshot = null
+      svgCanvas.cornerRadiusConverted = null
+      svgCanvas.cornerRadiusDir = null
+      svgCanvas.call('changed', selectedElements)
+      break
+    }
+    default:
       // This could occur in an extension
       svgCanvas.hasDragStartTransform = false
       svgCanvas.dragStartTransforms = null
@@ -1027,7 +1223,7 @@ const mouseUpEvent = (evt) => {
       if (svgCanvas.getCurrentMode() === 'path') {
         svgCanvas.pathActions.toEditMode(element)
       } else if (svgCanvas.getCurConfig().selectNew) {
-        const modes = ['circle', 'ellipse', 'square', 'rect', 'fhpath', 'line', 'fhellipse', 'fhrect', 'star', 'polygon', 'shapelib']
+        const modes = ['circle', 'ellipse', 'square', 'rect', 'fhpath', 'line', 'fhellipse', 'fhrect', 'star', 'polygon', 'shapelib', 'cube3d', 'lipidbilayer', 'curvedarrow', 'hydrogel', 'dna']
         if (modes.indexOf(svgCanvas.getCurrentMode()) !== -1 && !evt.altKey) {
           svgCanvas.setMode('select')
         }
@@ -1042,18 +1238,72 @@ const mouseUpEvent = (evt) => {
   svgCanvas.setStartTransform(null)
 }
 
+/** Shape tags that can become a path for node/Bézier editing */
+const PATH_EDITABLE_TAGS = new Set([
+  'path', 'line', 'polyline', 'polygon', 'rect', 'circle', 'ellipse'
+])
+
+/**
+ * Walk from the event target to the nearest path-editable element
+ * (before group collapse via getMouseTarget).
+ * @param {EventTarget|null} node
+ * @returns {Element|null}
+ */
+const findPathEditableElement = (node) => {
+  let cur = node
+  const svgRoot = svgCanvas.getSvgRoot()
+  while (cur && cur !== svgRoot) {
+    if (cur.nodeType === 1) {
+      const tag = cur.tagName
+      if (tag === 'text') return cur
+      if (PATH_EDITABLE_TAGS.has(tag)) return cur
+      // Procedural brush groups keep their own dblclick handlers
+      if (tag === 'g' && cur.getAttribute('shape')) return null
+    }
+    cur = cur.parentNode
+  }
+  return null
+}
+
+/**
+ * Double-click: text edit, path/shape node edit, or enter group context.
+ * @param {MouseEvent} evt
+ * @returns {void}
+ */
 const dblClickEvent = (evt) => {
+  // Ignore selector / path grips chrome
+  if (evt.target?.closest?.('#selectorParentGroup')) return
+
+  const editable = findPathEditableElement(evt.target)
+
+  // Text
+  if (editable?.tagName === 'text' && svgCanvas.getCurrentMode() !== 'textedit') {
+    const pt = transformPoint(evt.clientX, evt.clientY, svgCanvas.getrootSctm())
+    svgCanvas.textActions.select(editable, pt.x, pt.y)
+    return
+  }
+
+  // Path or convertible shape → individual movable anchor points (pathedit)
+  if (editable && PATH_EDITABLE_TAGS.has(editable.tagName)) {
+    // Leave group context so path grips work in root coordinates
+    if (svgCanvas.getCurrentGroup()) {
+      draw.leaveContext()
+    }
+    let pathEl = editable
+    if (editable.tagName !== 'path') {
+      pathEl = svgCanvas.convertToPath(editable)
+      if (!pathEl) return
+    }
+    svgCanvas.pathActions.toEditMode(pathEl)
+    return
+  }
+
   const selectedElements = svgCanvas.getSelectedElements()
   const evtTarget = evt.target
   const parent = evtTarget.parentNode
 
   let mouseTarget = svgCanvas.getMouseTarget(evt)
   const { tagName } = mouseTarget
-
-  if (tagName === 'text' && svgCanvas.getCurrentMode() !== 'textedit') {
-    const pt = transformPoint(evt.clientX, evt.clientY, svgCanvas.getrootSctm())
-    svgCanvas.textActions.select(mouseTarget, pt.x, pt.y)
-  }
 
   // Do nothing if already in current group
   if (parent === svgCanvas.getCurrentGroup()) { return }
@@ -1167,6 +1417,26 @@ const mouseDownEvent = (evt) => {
     } else if (griptype === 'resize') {
       svgCanvas.setCurrentMode('resize')
       svgCanvas.setCurrentResizeMode(dataStorage.get(grip, 'dir'))
+    } else if (griptype === 'linepoint') {
+      svgCanvas.setCurrentMode('linepoint')
+      svgCanvas.linePointEnd = dataStorage.get(grip, 'dir') // 'start' | 'end'
+      svgCanvas.hasDragStartTransform = false
+      svgCanvas.dragStartTransforms = null
+      const lineEl = selectedElements[0]
+      if (lineEl?.tagName === 'line') {
+        svgCanvas.linePointStartAttrs = {
+          x1: lineEl.getAttribute('x1'),
+          y1: lineEl.getAttribute('y1'),
+          x2: lineEl.getAttribute('x2'),
+          y2: lineEl.getAttribute('y2')
+        }
+      }
+    } else if (griptype === 'cornerradius') {
+      svgCanvas.setCurrentMode('cornerradius')
+      svgCanvas.cornerRadiusDir = dataStorage.get(grip, 'dir') // vertex index
+      // Never treat this gesture as a select-drag translate
+      svgCanvas.hasDragStartTransform = false
+      svgCanvas.dragStartTransforms = null
     }
     mouseTarget = selectedElements[0]
   }
@@ -1280,26 +1550,35 @@ const mouseDownEvent = (evt) => {
     case 'fhrect':
     case 'fhpath':
       svgCanvas.setStart({ x: realX, y: realY })
-      svgCanvas.setControllPoint1('x', 0)
-      svgCanvas.setControllPoint1('y', 0)
-      svgCanvas.setControllPoint2('x', 0)
-      svgCanvas.setControllPoint2('y', 0)
+      // Seed control points at the start so B-spline sampling works immediately
+      // (previously 0,0 made `if (cp2.x && cp2.y)` fail near the origin / first moves).
+      svgCanvas.setControllPoint1('x', realX)
+      svgCanvas.setControllPoint1('y', realY)
+      svgCanvas.setControllPoint2('x', realX)
+      svgCanvas.setControllPoint2('y', realY)
+      svgCanvas.setSumDistance(0)
       svgCanvas.setStarted(true)
       svgCanvas.setDAttr(realX + ',' + realY + ' ')
       // Commented out as doing nothing now:
       // strokeW = parseFloat(curShape.stroke_width) === 0 ? 1 : curShape.stroke_width;
-      svgCanvas.addSVGElementsFromJson({
-        element: 'polyline',
-        curStyles: true,
-        attr: {
-          points: svgCanvas.getDAttr(),
-          id: svgCanvas.getNextId(),
-          fill: 'none',
-          opacity: curShape.opacity / 2,
-          'stroke-linecap': 'round',
-          style: 'pointer-events:none'
-        }
-      })
+      {
+        const stroke = svgCanvas.getColor('stroke')
+        const strokeWidth = Number(svgCanvas.getStrokeWidth()) || 1
+        svgCanvas.addSVGElementsFromJson({
+          element: 'polyline',
+          curStyles: true,
+          attr: {
+            points: svgCanvas.getDAttr(),
+            id: svgCanvas.getNextId(),
+            fill: 'none',
+            stroke: stroke === 'none' ? '#000000' : stroke,
+            'stroke-width': strokeWidth,
+            opacity: curShape.opacity / 2,
+            'stroke-linecap': 'round',
+            style: 'pointer-events:none'
+          }
+        })
+      }
       svgCanvas.setFreehand('minx', realX)
       svgCanvas.setFreehand('maxx', realX)
       svgCanvas.setFreehand('miny', realY)
@@ -1435,6 +1714,35 @@ const mouseDownEvent = (evt) => {
       // we are starting an undoable change (a drag-rotation)
       svgCanvas.undoMgr.beginUndoableChange('transform', selectedElements)
       break
+    case 'linepoint':
+      svgCanvas.setStarted(true)
+      break
+    case 'cornerradius': {
+      const cornerEl = selectedElements[0]
+      if (!supportsCornerRadius(cornerEl)) {
+        svgCanvas.setCurrentMode('select')
+        break
+      }
+      svgCanvas.setStarted(true)
+      svgCanvas.cornerRadiusConverted = null
+      if (cornerEl.tagName === 'rect') {
+        svgCanvas.cornerRadiusSnapshot = {
+          rx: cornerEl.getAttribute('rx'),
+          ry: cornerEl.getAttribute('ry')
+        }
+      } else if (cornerEl.tagName === 'polygon') {
+        svgCanvas.cornerRadiusSnapshot = {
+          points: cornerEl.getAttribute('points')
+        }
+      } else {
+        svgCanvas.cornerRadiusSnapshot = {
+          d: cornerEl.getAttribute('d'),
+          'data-corner-radius': cornerEl.getAttribute('data-corner-radius'),
+          'data-corner-points': cornerEl.getAttribute('data-corner-points')
+        }
+      }
+      break
+    }
     default:
       // This could occur in an extension
       break
@@ -1469,88 +1777,9 @@ const mouseDownEvent = (evt) => {
  * @returns {void}
  */
 const DOMMouseScrollEvent = (e) => {
-  const zoom = svgCanvas.getZoom()
-  const { $id } = svgCanvas
-  if (!e.shiftKey) { return }
-
-  e.preventDefault()
-
-  // Get screenCTM from the first child group of svgcontent
-  // Note: svgcontent itself has x/y offset attributes, so we use its first child
-  const svgContent = $id('svgcontent')
-  const rootGroup = svgContent?.querySelector('g')
-  const screenCTM = rootGroup?.getScreenCTM?.()
-  if (!screenCTM) { return }
-  svgCanvas.setRootSctm(screenCTM.inverse())
-
-  const workarea = document.getElementById('workarea')
-  const scrbar = 15
-  const rulerwidth = svgCanvas.getCurConfig().showRulers ? 16 : 0
-
-  // mouse relative to content area in content pixels
-  const pt = transformPoint(e.clientX, e.clientY, svgCanvas.getrootSctm())
-
-  // full work area width in screen pixels
-  const editorFullW = parseFloat(getComputedStyle(workarea, null).width.replace('px', ''))
-  const editorFullH = parseFloat(getComputedStyle(workarea, null).height.replace('px', ''))
-
-  // work area width minus scroll and ruler in screen pixels
-  const editorW = editorFullW - scrbar - rulerwidth
-  const editorH = editorFullH - scrbar - rulerwidth
-
-  // work area width in content pixels
-  const workareaViewW = editorW * svgCanvas.getrootSctm().a
-  const workareaViewH = editorH * svgCanvas.getrootSctm().d
-
-  // content offset from canvas in screen pixels
-  const wOffset = findPos(workarea)
-  const wOffsetLeft = wOffset.left + rulerwidth
-  const wOffsetTop = wOffset.top + rulerwidth
-
-  const delta = (e.wheelDelta) ? e.wheelDelta : (e.detail) ? -e.detail : 0
-  if (!delta) { return }
-
-  let factor = Math.max(3 / 4, Math.min(4 / 3, (delta)))
-
-  let wZoom; let hZoom
-  if (factor > 1) {
-    wZoom = Math.ceil(editorW / workareaViewW * factor * 100) / 100
-    hZoom = Math.ceil(editorH / workareaViewH * factor * 100) / 100
-  } else {
-    wZoom = Math.floor(editorW / workareaViewW * factor * 100) / 100
-    hZoom = Math.floor(editorH / workareaViewH * factor * 100) / 100
+  // Cursor-centered zoom is handled by the editor (Ctrl/Cmd/Alt/Shift + wheel).
+  // Keep this stub so legacy mousewheel listeners do not double-zoom.
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+    e.preventDefault()
   }
-  let zoomlevel = Math.min(wZoom, hZoom)
-  zoomlevel = Math.min(10, Math.max(0.01, zoomlevel))
-  if (zoomlevel === zoom) {
-    return
-  }
-  factor = zoomlevel / zoom
-
-  // top left of workarea in content pixels before zoom
-  const topLeftOld = transformPoint(wOffsetLeft, wOffsetTop, svgCanvas.getrootSctm())
-
-  // top left of workarea in content pixels after zoom
-  const topLeftNew = {
-    x: pt.x - (pt.x - topLeftOld.x) / factor,
-    y: pt.y - (pt.y - topLeftOld.y) / factor
-  }
-
-  // top left of workarea in canvas pixels relative to content after zoom
-  const topLeftNewCanvas = {
-    x: topLeftNew.x * zoomlevel,
-    y: topLeftNew.y * zoomlevel
-  }
-
-  // new center in canvas pixels
-  const newCtr = {
-    x: topLeftNewCanvas.x - rulerwidth + editorFullW / 2,
-    y: topLeftNewCanvas.y - rulerwidth + editorFullH / 2
-  }
-
-  svgCanvas.setZoom(zoomlevel)
-  document.getElementById('zoom').value = ((zoomlevel * 100).toFixed(1))
-
-  svgCanvas.call('updateCanvas', { center: false, newCtr })
-  svgCanvas.call('zoomDone')
 }

@@ -1,5 +1,4 @@
 import SvgCanvas from '@svgedit/svgcanvas'
-import LayersPanelHtml from './LayersPanel.html'
 
 const { $id, $click } = SvgCanvas
 
@@ -43,11 +42,7 @@ class LayersPanel {
    * @returns {void}
    */
   init () {
-    const template = document.createElement('template')
     const { i18next } = this.editor
-
-    template.innerHTML = LayersPanelHtml
-    this.editor.$svgEditor.append(template.content.cloneNode(true))
     // layer menu added to DOM
     const menuMore = document.createElement('se-cmenu-layers')
     menuMore.setAttribute('id', 'se-cmenu-layers-more')
@@ -68,18 +63,6 @@ class LayersPanel {
     $click($id('layer_rename'), this.layerRename.bind(this))
     $id('se-cmenu-layers-more').addEventListener('change', this.lmenuFunc.bind(this))
     $id('se-cmenu-layers-list').addEventListener('change', (e) => { this.lmenuFunc(e) })
-    $click($id('sidepanel_handle'), () => this.toggleSidePanel())
-    this.toggleSidePanel(this.editor.configObj.curConfig.showlayers)
-  }
-
-  toggleSidePanel (displayFlag) {
-    if (displayFlag === undefined) {
-      this.editor.$svgEditor.classList.toggle('open')
-    } else if (displayFlag) {
-      this.editor.$svgEditor.classList.add('open')
-    } else {
-      this.editor.$svgEditor.classList.remove('open')
-    }
   }
 
   /**

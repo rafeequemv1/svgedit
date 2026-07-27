@@ -64,7 +64,17 @@ export default {
         return
       }
 
-      if (!file.type.includes('image')) {
+      if (svgCanvas.runExtensions('openFile', {
+        file,
+        action: 'import',
+        shiftKey: imgImport.shiftKey
+      })) {
+        resetFileInput()
+        return
+      }
+
+      if (!file.type.includes('image') && !/\.(svg|eps)$/i.test(file.name || '')) {
+        $id('se-prompt-dialog').close = true
         resetFileInput()
         return
       }
@@ -132,6 +142,7 @@ export default {
     // create an input with type file to open the filesystem dialog
     const imgImport = document.createElement('input')
     imgImport.type = 'file'
+    imgImport.accept = 'image/*,.svg,.eps,application/postscript,application/eps'
     imgImport.addEventListener('change', importImage)
     // dropping a svg file will import it in the svg as well
     this.workarea.addEventListener('drop', importImage)
@@ -165,8 +176,12 @@ export default {
       svgCanvas.clear()
       try {
         const blob = await fileOpen({
-          mimeTypes: ['image/*']
+          mimeTypes: ['image/*', 'application/postscript', 'application/eps']
         })
+        if (svgCanvas.runExtensions('openFile', { file: blob, action: 'open', prepared: true })) {
+          handle = blob.handle
+          return
+        }
         const svgContent = await blob.text()
         await svgEditor.loadSvgString(svgContent)
         svgEditor.updateCanvas()

@@ -12,6 +12,7 @@ import {
   getElement,
   getBBox as utilsGetBBox
 } from './utilities.js'
+import { getTextElementContent } from './text-content.js'
 import { supportsGoodTextCharPos } from '../common/browser.js'
 
 let svgCanvas = null
@@ -43,6 +44,7 @@ class TextActions {
   #lastX = null
   #lastY = null
   #allowDbl = false
+  #savedSel = { start: 0, end: 0 }
 
   /**
    * Get the accumulated transformation matrix from the element up to the SVG content element.
@@ -79,6 +81,19 @@ class TextActions {
   }
 
   /**
+   * Remember textarea selection (survives toolbar button focus steal).
+   * @returns {void}
+   * @private
+   */
+  #rememberSelection = () => {
+    if (!this.#textinput) return
+    this.#savedSel = {
+      start: this.#textinput.selectionStart,
+      end: this.#textinput.selectionEnd
+    }
+  }
+
+  /**
    *
    * @param {Integer} index
    * @returns {void}
@@ -102,6 +117,7 @@ class TextActions {
     const charbb = this.#chardata[index]
     if (!empty) {
       this.#textinput.setSelectionRange(index, index)
+      this.#savedSel = { start: index, end: index }
     }
     this.#cursor = getElement('text_cursor')
     if (!this.#cursor) {
@@ -121,8 +137,11 @@ class TextActions {
       }, 600)
     }
 
-    const startPt = this.#ptToScreen(charbb.x, this.#textbb.y)
-    const endPt = this.#ptToScreen(charbb.x, this.#textbb.y + this.#textbb.height)
+    const startPt = this.#ptToScreen(charbb.x, charbb.y ?? this.#textbb.y)
+    const endPt = this.#ptToScreen(
+      charbb.x,
+      (charbb.y ?? this.#textbb.y) + (charbb.height ?? this.#textbb.height)
+    )
 
     assignAttributes(this.#cursor, {
       x1: startPt.x,
@@ -155,6 +174,7 @@ class TextActions {
     if (!skipInput) {
       this.#textinput.setSelectionRange(start, end)
     }
+    this.#savedSel = { start, end }
 
     this.#selblock = getElement('text_selectblock')
     if (!this.#selblock) {
@@ -168,37 +188,22 @@ class TextActions {
       getElement('selectorParentGroup').append(this.#selblock)
     }
 
-    const startbb = this.#chardata[start]
-    const endbb = this.#chardata[end]
-
     this.#cursor.setAttribute('visibility', 'hidden')
 
-    const tl = this.#ptToScreen(startbb.x, this.#textbb.y)
-    const tr = this.#ptToScreen(startbb.x + (endbb.x - startbb.x), this.#textbb.y)
-    const bl = this.#ptToScreen(startbb.x, this.#textbb.y + this.#textbb.height)
-    const br = this.#ptToScreen(
-      startbb.x + (endbb.x - startbb.x),
-      this.#textbb.y + this.#textbb.height
-    )
-
-    const dstr =
-      'M' +
-      tl.x +
-      ',' +
-      tl.y +
-      ' L' +
-      tr.x +
-      ',' +
-      tr.y +
-      ' ' +
-      br.x +
-      ',' +
-      br.y +
-      ' ' +
-      bl.x +
-      ',' +
-      bl.y +
-      'z'
+    // Cover selected glyphs (works across multiple lines).
+    const parts = []
+    for (let i = start; i < end; i++) {
+      const bb = this.#chardata[i]
+      if (!bb) continue
+      const y = bb.y ?? this.#textbb.y
+      const h = bb.height ?? this.#textbb.height
+      const tl = this.#ptToScreen(bb.x, y)
+      const tr = this.#ptToScreen(bb.x + bb.width, y)
+      const br = this.#ptToScreen(bb.x + bb.width, y + h)
+      const bl = this.#ptToScreen(bb.x, y + h)
+      parts.push(`M${tl.x},${tl.y} L${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}z`)
+    }
+    const dstr = parts.join(' ')
 
     assignAttributes(this.#selblock, {
       d: dstr,
@@ -214,32 +219,33 @@ class TextActions {
    * @private
    */
   #getIndexFromPoint = (mouseX, mouseY) => {
-    // Position cursor here
-    const pt = svgCanvas.getSvgRoot().createSVGPoint()
-    pt.x = mouseX
-    pt.y = mouseY
-
     // No content, so return 0
-    if (this.#chardata.length === 1) {
+    if (this.#chardata.length <= 1) {
       return 0
     }
-    // Determine if cursor should be on left or right of character
-    let charpos = this.#curtext.getCharNumAtPosition(pt)
-    if (charpos < 0) {
-      // Out of text range, look at mouse coords
-      charpos = this.#chardata.length - 2
-      if (mouseX <= this.#chardata[0].x) {
-        charpos = 0
+
+    // Nearest glyph in logical coordinates (includes virtual newline slots).
+    let best = 0
+    let bestDist = Infinity
+    const last = this.#chardata.length - 1
+    for (let i = 0; i < last; i++) {
+      const bb = this.#chardata[i]
+      if (!bb) continue
+      const cx = bb.x + (bb.width || 0) / 2
+      const cy = (bb.y ?? this.#textbb.y) + (bb.height ?? this.#textbb.height) / 2
+      const dist = (mouseX - cx) ** 2 + (mouseY - cy) ** 2
+      if (dist < bestDist) {
+        bestDist = dist
+        best = i
       }
-    } else if (charpos >= this.#chardata.length - 2) {
-      charpos = this.#chardata.length - 2
     }
-    const charbb = this.#chardata[charpos]
-    const mid = charbb.x + charbb.width / 2
+
+    const charbb = this.#chardata[best]
+    const mid = charbb.x + (charbb.width || 0) / 2
     if (mouseX > mid) {
-      charpos++
+      best = Math.min(best + 1, last)
     }
-    return charpos
+    return best
   }
 
   /**
@@ -327,7 +333,7 @@ class TextActions {
    * @private
    */
   #selectAll = (evt) => {
-    this.#setSelection(0, this.#curtext.textContent.length)
+    this.#setSelection(0, getTextElementContent(this.#curtext).length)
     evt.target.removeEventListener('click', this.#selectAll)
   }
 
@@ -348,7 +354,7 @@ class TextActions {
     const pt = this.#screenToPt(mouseX, mouseY)
 
     const index = this.#getIndexFromPoint(pt.x, pt.y)
-    const str = this.#curtext.textContent
+    const str = getTextElementContent(this.#curtext)
     const first = str.slice(0, index).replace(/[a-z\d]+$/i, '').length
     const m = str.slice(index).match(/^[a-z\d]+/i)
     const last = (m ? m[0].length : 0) + index
@@ -504,7 +510,7 @@ class TextActions {
       svgCanvas.call('selected', [this.#curtext])
       svgCanvas.addToSelection([this.#curtext], true)
     }
-    if (!this.#curtext?.textContent.length) {
+    if (!getTextElementContent(this.#curtext)?.length) {
       // No content, so delete
       svgCanvas.deleteSelectedElements()
     }
@@ -516,6 +522,38 @@ class TextActions {
     // if (supportsEditableText()) {
     //   curtext.removeAttribute('editable');
     // }
+  }
+
+  /**
+   * @returns {{ start: number, end: number }|null}
+   */
+  getInputSelection () {
+    if (this.#textinput && document.activeElement === this.#textinput) {
+      this.#rememberSelection()
+    }
+    if (!this.#savedSel) return null
+    return { start: this.#savedSel.start, end: this.#savedSel.end }
+  }
+
+  /**
+   * @param {number} start
+   * @param {number} end
+   * @returns {void}
+   */
+  setInputSelection (start, end) {
+    if (!this.#textinput) return
+    this.#savedSel = { start, end }
+    this.#textinput.focus()
+    this.#textinput.setSelectionRange(start, end)
+    this.#setSelection(start, end, true)
+  }
+
+  /**
+   * Call from input/select/keyup on the proxy textarea.
+   * @returns {void}
+   */
+  rememberInputSelection () {
+    this.#rememberSelection()
   }
 
   /**
@@ -543,7 +581,6 @@ class TextActions {
     if (!this.#curtext) {
       return
     }
-    let i
     let end
     // if (supportsEditableText()) {
     //   curtext.select();
@@ -557,7 +594,7 @@ class TextActions {
       svgCanvas.selectorManager.requestSelector(this.#curtext).showGrips(false)
     }
 
-    const str = this.#curtext.textContent
+    const str = getTextElementContent(this.#curtext)
     const len = str.length
 
     this.#textbb = utilsGetBBox(this.#curtext)
@@ -569,45 +606,109 @@ class TextActions {
 
     this.#chardata = []
     this.#chardata.length = len
+    if (this.#textinput && this.#textinput.value !== str) {
+      this.#textinput.value = str
+    }
     this.#textinput.focus()
 
     this.#curtext.removeEventListener('dblclick', this.#selectWord)
     this.#curtext.addEventListener('dblclick', this.#selectWord)
 
-    if (!len) {
-      end = { x: this.#textbb.x + this.#textbb.width / 2, width: 0 }
-    }
-
-    for (i = 0; i < len; i++) {
-      const start = this.#curtext.getStartPositionOfChar(i)
-      end = this.#curtext.getEndPositionOfChar(i)
-
+    const zoomFix = (bb) => {
       if (!supportsGoodTextCharPos()) {
         const zoom = svgCanvas.getZoom()
         const offset = svgCanvas.contentW * zoom
-        start.x -= offset
-        end.x -= offset
-
-        start.x /= zoom
-        end.x /= zoom
+        return {
+          x: (bb.x - offset) / zoom,
+          y: bb.y / zoom,
+          width: bb.width / zoom,
+          height: bb.height / zoom
+        }
       }
+      return bb
+    }
 
-      // Get a "bbox" equivalent for each character. Uses the
-      // bbox data of the actual text for y, height purposes
+    const extentAt = (svgIndex) => {
+      try {
+        const extent = this.#curtext.getExtentOfChar(svgIndex)
+        return zoomFix({
+          x: extent.x,
+          y: extent.y,
+          width: extent.width,
+          height: extent.height
+        })
+      } catch (e) {
+        return zoomFix({
+          x: this.#textbb.x + this.#textbb.width / 2,
+          y: this.#textbb.y,
+          width: 0,
+          height: this.#textbb.height
+        })
+      }
+    }
 
-      // TODO: Decide if y, width and height are actually necessary
-      this.#chardata[i] = {
-        x: start.x,
-        y: this.#textbb.y, // start.y?
-        width: end.x - start.x,
+    if (!len) {
+      end = {
+        x: this.#textbb.x + this.#textbb.width / 2,
+        y: this.#textbb.y,
+        width: 0,
         height: this.#textbb.height
       }
+    } else {
+      // Map logical string (with \n) to SVG glyph indices (tspans; empty lines use nbsp).
+      const lines = str.split('\n')
+      let logicalIdx = 0
+      let svgIdx = 0
+      lines.forEach((line, lineIndex) => {
+        let lineExt = null
+        if (line.length === 0) {
+          lineExt = extentAt(svgIdx++)
+        } else {
+          for (let c = 0; c < line.length; c++) {
+            const bb = extentAt(svgIdx++)
+            this.#chardata[logicalIdx++] = bb
+            end = bb
+            if (c === 0) lineExt = bb
+          }
+        }
+        if (lineIndex < lines.length - 1) {
+          // Virtual newline glyph for textarea `\n` index alignment
+          if (line.length === 0 && lineExt) {
+            this.#chardata[logicalIdx++] = {
+              x: lineExt.x,
+              y: lineExt.y,
+              width: 0,
+              height: lineExt.height
+            }
+            end = this.#chardata[logicalIdx - 1]
+          } else {
+            const prev = this.#chardata[logicalIdx - 1] || lineExt
+            this.#chardata[logicalIdx++] = {
+              x: (prev?.x ?? this.#textbb.x) + (prev?.width ?? 0),
+              y: prev?.y ?? this.#textbb.y,
+              width: 0,
+              height: prev?.height ?? this.#textbb.height
+            }
+            end = this.#chardata[logicalIdx - 1]
+          }
+        } else if (line.length === 0 && lineExt) {
+          // Trailing empty line: end cursor sits on that line
+          end = {
+            x: lineExt.x,
+            y: lineExt.y,
+            width: 0,
+            height: lineExt.height
+          }
+        }
+      })
     }
 
     // Add a last bbox for cursor at end of text
     this.#chardata.push({
-      x: end.x,
-      width: 0
+      x: end.x + (end.width || 0),
+      y: end.y ?? this.#textbb.y,
+      width: 0,
+      height: end.height ?? this.#textbb.height
     })
     this.#setSelection(this.#textinput.selectionStart, this.#textinput.selectionEnd, true)
   }

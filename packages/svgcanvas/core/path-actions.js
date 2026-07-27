@@ -17,6 +17,7 @@ import {
   assignAttributes, getElement, getRotationAngle, snapToGrid,
   getBBox
 } from './utilities.js'
+import { pointsToSmoothPathD } from './paper-smooth.js'
 
 let svgCanvas = null
 let path = null
@@ -240,9 +241,47 @@ class PathActions {
   #hasMoved = false
 
   /**
-  * This function converts a polyline (created by the fh_path tool) into
-  * a path element and coverts every three line segments into a single bezier
-  * curve in an attempt to smooth out the free-hand.
+  * Legacy every-3-points Bézier cheat (fallback if Paper.js fails).
+  * @param {SVGPointList} points
+  * @returns {string|null}
+  * @private
+  */
+  #legacySmoothPolylineD = (points) => {
+    const N = points.numberOfItems
+    if (N < 4) return null
+    let curpos = points.getItem(0)
+    let prevCtlPt = null
+    const d = [`M${curpos.x},${curpos.y} C`]
+    let i
+    for (i = 1; i <= (N - 4); i += 3) {
+      let ct1 = points.getItem(i)
+      const ct2 = points.getItem(i + 1)
+      const end = points.getItem(i + 2)
+      if (prevCtlPt) {
+        const newpts = svgCanvas.smoothControlPoints(prevCtlPt, ct1, curpos)
+        if (newpts?.length === 2) {
+          const prevArr = d[d.length - 1].split(',')
+          prevArr[2] = newpts[0].x
+          prevArr[3] = newpts[0].y
+          d[d.length - 1] = prevArr.join(',')
+          ct1 = newpts[1]
+        }
+      }
+      d.push([ct1.x, ct1.y, ct2.x, ct2.y, end.x, end.y].join(','))
+      curpos = end
+      prevCtlPt = ct2
+    }
+    d.push('L')
+    while (i < N) {
+      const pt = points.getItem(i)
+      d.push([pt.x, pt.y].join(','))
+      i++
+    }
+    return d.join(' ')
+  }
+
+  /**
+  * Convert a freehand polyline into a smoothed cubic path (Paper.js simplify).
   * @function smoothPolylineIntoPath
   * @param {Element} element
   * @returns {Element}
@@ -250,70 +289,33 @@ class PathActions {
   */
   #smoothPolylineIntoPath = (element) => {
     const { points } = element
-    const N = points.numberOfItems
-    if (N >= 4) {
-      // loop through every 3 points and convert to a cubic bezier curve segment
-      //
-      // NOTE: this is cheating, it means that every 3 points has the potential to
-      // be a corner instead of treating each point in an equal manner. In general,
-      // this technique does not look that good.
-      //
-      // I am open to better ideas!
-      //
-      // Reading:
-      // - http://www.efg2.com/Lab/Graphics/Jean-YvesQueinecBezierCurves.htm
-      // - https://www.codeproject.com/KB/graphics/BezierSpline.aspx?msg=2956963
-      // - https://www.ian-ko.com/ET_GeoWizards/UserGuide/smooth.htm
-      // - https://www.cs.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/Bezier/bezier-der.html
-      let curpos = points.getItem(0)
-      let prevCtlPt = null
-      let d = []
-      d.push(`M${curpos.x},${curpos.y} C`)
-      let i
-      for (i = 1; i <= (N - 4); i += 3) {
-        let ct1 = points.getItem(i)
-        const ct2 = points.getItem(i + 1)
-        const end = points.getItem(i + 2)
+    const N = points?.numberOfItems ?? 0
+    if (N < 2) return element
 
-        // if the previous segment had a control point, we want to smooth out
-        // the control points on both sides
-        if (prevCtlPt) {
-          const newpts = svgCanvas.smoothControlPoints(prevCtlPt, ct1, curpos)
-          if (newpts?.length === 2) {
-            const prevArr = d[d.length - 1].split(',')
-            prevArr[2] = newpts[0].x
-            prevArr[3] = newpts[0].y
-            d[d.length - 1] = prevArr.join(',')
-            ct1 = newpts[1]
-          }
-        }
-
-        d.push([ct1.x, ct1.y, ct2.x, ct2.y, end.x, end.y].join(','))
-
-        curpos = end
-        prevCtlPt = ct2
-      }
-      // handle remaining line segments
-      d.push('L')
-      while (i < N) {
-        const pt = points.getItem(i)
-        d.push([pt.x, pt.y].join(','))
-        i++
-      }
-      d = d.join(' ')
-
-      element = svgCanvas.addSVGElementsFromJson({
-        element: 'path',
-        curStyles: true,
-        attr: {
-          id: svgCanvas.getId(),
-          d,
-          fill: 'none'
-        }
-      })
-      // No need to call "changed", as this is already done under mouseUp
+    const smoothness = svgCanvas.getCurConfig()?.freehandSmoothing ?? 50
+    let d = pointsToSmoothPathD(points, smoothness)
+    if (!d) {
+      d = this.#legacySmoothPolylineD(points)
     }
-    return element
+    if (!d) {
+      // Minimal polyline → path for short strokes
+      const p0 = points.getItem(0)
+      d = `M${p0.x},${p0.y}`
+      for (let i = 1; i < N; i++) {
+        const p = points.getItem(i)
+        d += `L${p.x},${p.y}`
+      }
+    }
+
+    return svgCanvas.addSVGElementsFromJson({
+      element: 'path',
+      curStyles: true,
+      attr: {
+        id: svgCanvas.getId(),
+        d,
+        fill: 'none'
+      }
+    })
   }
 
   /**

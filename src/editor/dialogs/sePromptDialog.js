@@ -34,15 +34,25 @@ export class SePromptDialog extends HTMLElement {
         if (this.dialog.opened) {
           this.dialog.close()
         }
-        this.dialog.textContent = newValue
-        this.dialog.choices = ['Cancel']
-        this.dialog.open()
+        if (newValue != null) {
+          this.dialog.textContent = newValue
+          this.dialog.choices = ['Cancel']
+          if (this.getAttribute('close') !== 'true') {
+            this.dialog.open()
+          }
+        }
         break
       case 'close':
-        if (this.dialog.opened) {
-          this.dialog.close()
-        } else {
-          this.dialog.open()
+        if (newValue === 'true') {
+          if (this.dialog.opened) {
+            this.dialog.close()
+          }
+        } else if (this.getAttribute('title')) {
+          this.dialog.textContent = this.getAttribute('title')
+          this.dialog.choices = ['Cancel']
+          if (!this.dialog.opened) {
+            this.dialog.open()
+          }
         }
         break
       default:

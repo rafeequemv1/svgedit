@@ -11,6 +11,14 @@ import { getRotationAngle, getBBox, getStrokedBBox } from './utilities.js'
 import { transformListToTransform, transformBox, transformPoint, matrixMultiply, getTransformList } from './math.js'
 import { NS } from './namespaces'
 import { warn } from '../common/logger.js'
+import {
+  cornerWidgetPosition,
+  getCornerRadius,
+  getShapeCornerPoints,
+  isCornerGripEligible,
+  polygonSignedArea,
+  supportsCornerRadius
+} from './corner-radius.js'
 
 let svgCanvas
 // change radius if touch screen
@@ -122,6 +130,8 @@ export class Selector {
     if (elem && show) {
       this.selectorGroup.append(selectModule.getSelectorManager().selectorGripsGroup)
       Selector.updateGripCursors(getRotationAngle(elem))
+      // Reposition corner-radius grips now that hasGrips is true
+      this.resize()
     }
   }
 
@@ -261,6 +271,17 @@ export class Selector {
         selectedGrips[dir].setAttribute('cy', coords[1])
       })
 
+      // Lines use endpoint grips instead of box-resize handles
+      if (tagName === 'line') {
+        Object.values(selectedGrips).forEach((grip) => {
+          grip.setAttribute('display', 'none')
+        })
+      } else {
+        Object.values(selectedGrips).forEach((grip) => {
+          grip.setAttribute('display', 'inline')
+        })
+      }
+
       // we want to go 20 pixels in the negative transformed y direction, ignoring scale
       mgr.rotateGripConnector.setAttribute('x1', nbax + (nbaw) / 2)
       mgr.rotateGripConnector.setAttribute('y1', nbay)
@@ -269,6 +290,97 @@ export class Selector {
 
       mgr.rotateGrip.setAttribute('cx', nbax + (nbaw) / 2)
       mgr.rotateGrip.setAttribute('cy', nbay - (gripRadius * 5))
+
+      // Illustrator-style grips: sharp interior corners only, inset into the fill.
+      // Transform vertices with the same matrix as the selection box so grips
+      // track the shape during drag/move (parented to selectorGroup).
+      const showCorners = supportsCornerRadius(selected) && this.hasGrips
+      const shapePts = showCorners ? getShapeCornerPoints(selected) : []
+      if (showCorners && mgr.selectorGripsGroup.parentNode !== this.selectorGroup) {
+        this.selectorGroup.append(mgr.selectorGripsGroup)
+      }
+      let unrotm = null
+      if (angle) {
+        const rot = svgCanvas.getSvgRoot().createSVGTransform()
+        rot.setRotate(-angle, cx, cy)
+        unrotm = rot.matrix
+      }
+      const screenPts = shapePts.map((p) => {
+        let pt = transformPoint(p.x * zoom, p.y * zoom, m)
+        if (unrotm) {
+          pt = transformPoint(pt.x, pt.y, unrotm)
+        }
+        return pt
+      })
+      const signedArea = screenPts.length >= 3 ? polygonSignedArea(screenPts) : 0
+      const eligible = []
+      if (showCorners && screenPts.length >= 3) {
+        const n = screenPts.length
+        for (let i = 0; i < n; i++) {
+          if (isCornerGripEligible(
+            screenPts[(i + n - 1) % n],
+            screenPts[i],
+            screenPts[(i + 1) % n],
+            signedArea
+          )) {
+            eligible.push(i)
+          }
+        }
+      }
+      const grips = mgr.ensureCornerRadiusGrips(eligible.length)
+      if (eligible.length) {
+        const radius = (getCornerRadius(selected) || 0) * zoom
+        const minInset = 10
+        const n = screenPts.length
+        eligible.forEach((vertexIndex, gripIndex) => {
+          const widget = cornerWidgetPosition(
+            screenPts[(vertexIndex + n - 1) % n],
+            screenPts[vertexIndex],
+            screenPts[(vertexIndex + 1) % n],
+            radius,
+            minInset,
+            signedArea
+          )
+          const grip = grips[gripIndex]
+          dataStorage.put(grip, 'dir', vertexIndex)
+          grip.setAttribute('display', 'inline')
+          grip.setAttribute('cx', widget.x)
+          grip.setAttribute('cy', widget.y)
+        })
+      } else {
+        grips.forEach((grip) => grip.setAttribute('display', 'none'))
+      }
+
+      // Line endpoint grips — both ends editable in select mode
+      const lineGrips = mgr.lineEndpointGrips
+      if (lineGrips?.start && lineGrips?.end) {
+        if (tagName === 'line' && this.hasGrips) {
+          if (mgr.selectorGripsGroup.parentNode !== this.selectorGroup) {
+            this.selectorGroup.append(mgr.selectorGripsGroup)
+          }
+          const x1 = Number(selected.getAttribute('x1')) || 0
+          const y1 = Number(selected.getAttribute('y1')) || 0
+          const x2 = Number(selected.getAttribute('x2')) || 0
+          const y2 = Number(selected.getAttribute('y2')) || 0
+          let p1 = transformPoint(x1 * zoom, y1 * zoom, m)
+          let p2 = transformPoint(x2 * zoom, y2 * zoom, m)
+          if (angle) {
+            const rot = svgCanvas.getSvgRoot().createSVGTransform()
+            rot.setRotate(-angle, cx, cy)
+            p1 = transformPoint(p1.x, p1.y, rot.matrix)
+            p2 = transformPoint(p2.x, p2.y, rot.matrix)
+          }
+          lineGrips.start.setAttribute('display', 'inline')
+          lineGrips.start.setAttribute('cx', p1.x)
+          lineGrips.start.setAttribute('cy', p1.y)
+          lineGrips.end.setAttribute('display', 'inline')
+          lineGrips.end.setAttribute('cx', p2.x)
+          lineGrips.end.setAttribute('cy', p2.y)
+        } else {
+          lineGrips.start.setAttribute('display', 'none')
+          lineGrips.end.setAttribute('display', 'none')
+        }
+      }
     }
   }
 
@@ -327,8 +439,50 @@ export class SelectorManager {
     this.selectorGripsGroup = null
     this.rotateGripConnector = null
     this.rotateGrip = null
+    /** @type {SVGCircleElement[]} dynamic per-vertex corner-radius grips */
+    this.cornerRadiusGrips = []
+    /** @type {{ start: SVGCircleElement|null, end: SVGCircleElement|null }} */
+    this.lineEndpointGrips = { start: null, end: null }
 
     this.initGroup()
+  }
+
+  /**
+   * Ensure at least `count` corner-radius grips exist (hide extras).
+   * @param {number} count
+   * @returns {SVGCircleElement[]}
+   */
+  ensureCornerRadiusGrips (count) {
+    const dataStorage = svgCanvas.getDataStorage()
+    while (this.cornerRadiusGrips.length < count) {
+      const idx = this.cornerRadiusGrips.length
+      const grip = svgCanvas.createSVGElement({
+        element: 'circle',
+        attr: {
+          id: `selectorGrip_corner_${idx}`,
+          fill: '#fff',
+          stroke: '#22C',
+          'stroke-width': 1.5,
+          r: gripRadius,
+          display: 'none',
+          style: 'cursor:pointer',
+          'pointer-events': 'all'
+        }
+      })
+      dataStorage.put(grip, 'dir', idx)
+      dataStorage.put(grip, 'type', 'cornerradius')
+      this.cornerRadiusGrips.push(grip)
+      this.selectorGripsGroup.append(grip)
+    }
+    for (let i = 0; i < this.cornerRadiusGrips.length; i++) {
+      const grip = this.cornerRadiusGrips[i]
+      // Do not reset `dir` here — resize() assigns the real vertex index.
+      // Resetting to grip slot index caused wrong-vertex radius math / drift.
+      if (i >= count) {
+        grip.setAttribute('display', 'none')
+      }
+    }
+    return this.cornerRadiusGrips
   }
 
   /**
@@ -408,6 +562,30 @@ export class SelectorManager {
       })
     this.selectorGripsGroup.append(this.rotateGrip)
     dataStorage.put(this.rotateGrip, 'type', 'rotate')
+
+    // Corner-radius grips are created on demand (one per vertex)
+    this.cornerRadiusGrips = []
+
+    // Line endpoint grips (both ends editable without converting to path)
+    ;['start', 'end'].forEach((end) => {
+      const grip = svgCanvas.createSVGElement({
+        element: 'circle',
+        attr: {
+          id: `selectorGrip_line_${end}`,
+          fill: '#fff',
+          stroke: '#22C',
+          'stroke-width': 2,
+          r: gripRadius + 0.5,
+          display: 'none',
+          style: 'cursor:move',
+          'pointer-events': 'all'
+        }
+      })
+      dataStorage.put(grip, 'type', 'linepoint')
+      dataStorage.put(grip, 'dir', end)
+      this.lineEndpointGrips[end] = grip
+      this.selectorGripsGroup.append(grip)
+    })
 
     if (document.getElementById('canvasBackground')) { return }
 
