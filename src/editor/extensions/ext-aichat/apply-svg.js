@@ -70,15 +70,15 @@ export function compactModelHistory (reply, svg, applied) {
 
 /**
  * Build system prompt: conversational assistant that knows every tool and draws when asked.
- * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string }} ctx
+ * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean }} ctx
  */
 export function buildSystemPrompt (ctx) {
-  const { w, h, mode, includeCanvas, canvasSvg } = ctx
+  const { w, h, mode, includeCanvas, canvasSvg, hasImages } = ctx
 
   let prompt = `You are the built-in AI assistant for SVGEdit (LabCanvas-style scientific SVG editor).
 You are conversational: chat naturally, remember prior turns, ask clarifying questions when needed, and explain tools when asked.
 When the user wants something drawn, illustrated, diagrammed, sketched, or added to the canvas — you MUST output valid SVG that the app will place on the canvas automatically.
-
+${hasImages ? 'The user attached image(s). Treat them as visual reference: describe, recreate as clean SVG, vectorize/style-match, or extract diagrams as requested.\n' : ''}
 # How drawing works
 - Canvas size / preferred viewBox: ${w}×${h}
 - Draw mode: "${mode}" → ${mode === 'replace'

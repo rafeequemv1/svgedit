@@ -12,6 +12,12 @@ import {
   listGeminiModels
 } from './gemini.js'
 import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory } from './apply-svg.js'
+import {
+  blobToGeminiImage,
+  imageFilesFromDataTransfer,
+  buildUserParts,
+  MAX_IMAGES
+} from './image-attach.js'
 
 const name = 'aichat'
 const LS_KEY = 'svgedit.gemini.apiKey'
@@ -42,11 +48,14 @@ export default {
     const { svgCanvas } = svgEditor
     const { $id, $click } = svgCanvas
 
-    /** @type {Array<{role:'user'|'model', text:string}>} */
+    /** @type {Array<{role:'user'|'model', text:string, images?: Array<{mimeType:string,data:string}>}>} */
     let history = []
     let busy = false
     /** @type {Map<string, string>} modelId -> last SVG from compare */
     const compareSvgCache = new Map()
+    /** @type {Array<{id:string, mimeType:string, data:string, previewUrl:string, name:string}>} */
+    let pendingImages = []
+    let imageIdSeq = 0
 
     const getApiKey = () => localStorage.getItem(LS_KEY) || ''
     const getModel = () => localStorage.getItem(LS_MODEL) || GEMINI_MODELS[0].id
@@ -93,15 +102,93 @@ export default {
       localStorage.setItem(LS_COMPARE_MODELS, JSON.stringify(selectedCompareModels()))
     }
 
-    const appendMsg = (role, text) => {
+    const appendMsg = (role, text, images = []) => {
       const log = $id('ai_chat_log')
       if (!log) return
       const row = document.createElement('div')
       row.className = `ai-msg ai-msg-${role}`
-      row.textContent = text
+      if (images?.length) {
+        const strip = document.createElement('div')
+        strip.className = 'ai-msg-images'
+        images.forEach((img) => {
+          const el = document.createElement('img')
+          el.src = img.previewUrl || `data:${img.mimeType};base64,${img.data}`
+          el.alt = img.name || 'attachment'
+          strip.appendChild(el)
+        })
+        row.appendChild(strip)
+      }
+      if (text) {
+        const body = document.createElement('div')
+        body.className = 'ai-msg-text'
+        body.textContent = text
+        row.appendChild(body)
+      }
       log.appendChild(row)
       log.scrollTop = log.scrollHeight
       return row
+    }
+
+    const renderPendingImages = () => {
+      const strip = $id('ai_attach_strip')
+      if (!strip) return
+      strip.innerHTML = ''
+      strip.style.display = pendingImages.length ? 'flex' : 'none'
+      pendingImages.forEach((img) => {
+        const chip = document.createElement('div')
+        chip.className = 'ai-attach-chip'
+        const thumb = document.createElement('img')
+        thumb.src = img.previewUrl
+        thumb.alt = img.name
+        const rm = document.createElement('button')
+        rm.type = 'button'
+        rm.className = 'ai-attach-remove'
+        rm.title = t(svgEditor, 'removeImage')
+        rm.textContent = '×'
+        rm.addEventListener('click', () => {
+          pendingImages = pendingImages.filter((p) => p.id !== img.id)
+          renderPendingImages()
+        })
+        chip.appendChild(thumb)
+        chip.appendChild(rm)
+        strip.appendChild(chip)
+      })
+    }
+
+    const addImageFiles = async (files) => {
+      const list = [...files].filter((f) => f?.type?.startsWith('image/'))
+      if (!list.length) return
+      const room = MAX_IMAGES - pendingImages.length
+      if (room <= 0) {
+        setStatus(t(svgEditor, 'tooManyImages').replace('{{n}}', String(MAX_IMAGES)), true)
+        return
+      }
+      const slice = list.slice(0, room)
+      try {
+        for (const file of slice) {
+          const img = await blobToGeminiImage(file, file.name || 'paste.png')
+          pendingImages.push({
+            id: `img_${++imageIdSeq}`,
+            mimeType: img.mimeType,
+            data: img.data,
+            previewUrl: img.previewUrl,
+            name: img.name
+          })
+        }
+        if (list.length > room) {
+          setStatus(t(svgEditor, 'tooManyImages').replace('{{n}}', String(MAX_IMAGES)), true)
+        } else {
+          setStatus(t(svgEditor, 'imagesAttached').replace('{{n}}', String(pendingImages.length)))
+        }
+        renderPendingImages()
+      } catch (err) {
+        setStatus(err?.message || String(err), true)
+      }
+    }
+
+    const clearPendingImages = () => {
+      pendingImages = []
+      renderPendingImages()
     }
 
     const setStatus = (msg, isError = false) => {
@@ -167,16 +254,17 @@ export default {
       log.scrollTop = log.scrollHeight
     }
 
-    const buildContentsForPrompt = (prompt, compareMode) => {
+    const buildContentsForPrompt = (compareMode, currentParts) => {
       if (compareMode) {
-        return [{ role: 'user', parts: [{ text: prompt }] }]
+        return [{ role: 'user', parts: currentParts }]
       }
-      // Keep recent turns for conversation without blowing the context window
       const recent = history.slice(-16)
-      return recent.map((m) => ({
+      const contents = recent.map((m) => ({
         role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.text }]
+        parts: m.parts || [{ text: m.text }]
       }))
+      // current turn already pushed into history below — avoid duplicating
+      return contents
     }
 
     const send = async () => {
@@ -188,13 +276,19 @@ export default {
       const mode = $id('ai_draw_mode')?.value || 'append'
       const includeCanvas = !!$id('ai_include_canvas')?.checked
       const compareOn = !!$id('ai_compare_on')?.checked
+      const imagesSnapshot = pendingImages.map((p) => ({
+        mimeType: p.mimeType,
+        data: p.data,
+        previewUrl: p.previewUrl,
+        name: p.name
+      }))
 
       if (!apiKey) {
         setStatus(t(svgEditor, 'needKey'), true)
         $id('ai_api_key')?.focus()
         return
       }
-      if (!prompt) return
+      if (!prompt && !imagesSnapshot.length) return
 
       localStorage.setItem(LS_KEY, apiKey)
       localStorage.setItem(LS_MODEL, model)
@@ -209,8 +303,30 @@ export default {
       busy = true
       $id('ai_chat_send').disabled = true
       input.value = ''
-      appendMsg('user', prompt)
-      if (!compareOn) history.push({ role: 'user', text: prompt })
+      const userParts = buildUserParts(prompt, imagesSnapshot)
+      const displayText = prompt || (imagesSnapshot.length
+        ? t(svgEditor, 'imageOnlyPrompt').replace('{{n}}', String(imagesSnapshot.length))
+        : '')
+      appendMsg('user', displayText, imagesSnapshot)
+      clearPendingImages()
+
+      if (!compareOn) {
+        // Drop raw image bytes from older turns to keep context light
+        history = history.map((m) => {
+          if (m.role !== 'user' || !m.parts?.some((p) => p.inlineData)) return m
+          return {
+            role: 'user',
+            text: m.text,
+            parts: [{ text: `${m.text || ''}\n[Earlier message included image attachment(s).]` }]
+          }
+        })
+        history.push({
+          role: 'user',
+          text: displayText,
+          parts: userParts
+        })
+      }
+
       setStatus(compareOn
         ? t(svgEditor, 'comparing').replace('{{n}}', String(compareIds.length))
         : t(svgEditor, 'thinking'))
@@ -222,9 +338,12 @@ export default {
           h: Math.round(res.h) || 480,
           mode,
           includeCanvas,
-          canvasSvg: includeCanvas ? svgCanvas.getSvgString() : ''
+          canvasSvg: includeCanvas ? svgCanvas.getSvgString() : '',
+          hasImages: imagesSnapshot.length > 0
         })
-        const contents = buildContentsForPrompt(prompt, compareOn)
+        const contents = compareOn
+          ? [{ role: 'user', parts: userParts }]
+          : buildContentsForPrompt(false, userParts)
         const labelsById = Object.fromEntries(GEMINI_MODELS.map((m) => [m.id, m.label]))
 
         if (compareOn) {
@@ -257,7 +376,8 @@ export default {
           const applied = applyOne(svg, mode)
           history.push({
             role: 'model',
-            text: compactModelHistory(reply, svg, applied)
+            text: compactModelHistory(reply, svg, applied),
+            parts: [{ text: compactModelHistory(reply, svg, applied) }]
           })
           appendMsg('model', talk || (applied ? '✓ Drawn on the canvas.' : 'SVG returned but could not apply.'))
           if (!applied) {
@@ -266,8 +386,11 @@ export default {
           return
         }
 
-        // Conversational / how-to reply with no drawing
-        history.push({ role: 'model', text: reply.slice(0, 8000) })
+        history.push({
+          role: 'model',
+          text: reply.slice(0, 8000),
+          parts: [{ text: reply.slice(0, 8000) }]
+        })
         appendMsg('model', talk || reply.slice(0, 2000))
         setStatus(t(svgEditor, 'chatOk'))
       } catch (err) {
@@ -414,11 +537,15 @@ export default {
           <div id="ai_chat_log" class="ai_chat_log"></div>
           <div id="ai_chat_status" class="ai_chat_status"></div>
           <div class="ai_chat_composer">
+            <div id="ai_attach_strip" class="ai_attach_strip" style="display:none"></div>
             <textarea id="ai_chat_input" rows="3" placeholder="${t(svgEditor, 'placeholder')}"></textarea>
+            <input type="file" id="ai_image_input" accept="image/*" multiple hidden />
             <div class="ai_chat_actions">
+              <button type="button" id="ai_chat_attach" class="ai_btn secondary" title="${t(svgEditor, 'attachImagesTitle')}">${t(svgEditor, 'attachImages')}</button>
               <button type="button" id="ai_chat_clear" class="ai_btn secondary">${t(svgEditor, 'clearChat')}</button>
               <button type="button" id="ai_chat_send" class="ai_btn primary">${t(svgEditor, 'send')}</button>
             </div>
+            <p class="ai_hint ai_attach_hint">${t(svgEditor, 'attachHint')}</p>
           </div>
         `
 
@@ -440,9 +567,16 @@ export default {
         $click($id('ai_chat_close'), () => setOpen(false))
         $click($id('ai_chat_send'), () => { send() })
         $click($id('ai_refresh_models'), () => { refreshModelsFromApi() })
+        $click($id('ai_chat_attach'), () => $id('ai_image_input')?.click())
+        $id('ai_image_input')?.addEventListener('change', (e) => {
+          const files = e.target?.files
+          if (files?.length) addImageFiles(files)
+          e.target.value = ''
+        })
         $click($id('ai_chat_clear'), () => {
           history = []
           compareSvgCache.clear()
+          clearPendingImages()
           const log = $id('ai_chat_log')
           if (log) log.innerHTML = ''
           setStatus('')
@@ -456,6 +590,32 @@ export default {
         })
         modelSel?.addEventListener('change', () => {
           localStorage.setItem(LS_MODEL, modelSel.value)
+        })
+
+        const composer = panel.querySelector('.ai_chat_composer')
+        const onPasteImages = (e) => {
+          const files = imageFilesFromDataTransfer(e.clipboardData)
+          if (!files.length) return
+          e.preventDefault()
+          addImageFiles(files)
+        }
+        const onDropImages = (e) => {
+          const files = imageFilesFromDataTransfer(e.dataTransfer)
+          if (!files.length) return
+          e.preventDefault()
+          addImageFiles(files)
+        }
+        panel.addEventListener('paste', onPasteImages)
+        composer?.addEventListener('dragover', (e) => {
+          if (imageFilesFromDataTransfer(e.dataTransfer).length) {
+            e.preventDefault()
+            composer.classList.add('ai-drag-over')
+          }
+        })
+        composer?.addEventListener('dragleave', () => composer.classList.remove('ai-drag-over'))
+        composer?.addEventListener('drop', (e) => {
+          composer.classList.remove('ai-drag-over')
+          onDropImages(e)
         })
 
         $id('ai_chat_input')?.addEventListener('keydown', (e) => {
