@@ -53,7 +53,9 @@ await build({
     htmlStringPlugin,
     {
       ...dynamicImportVars({
-        include: ['src/editor/extensions/*/*.js']
+        include: ['src/editor/extensions/*/*.js'],
+        // Runtime Ghostscript URL import cannot be statically analyzed
+        exclude: ['**/eps-full-import.js', '**/ext-eps/vendor/**']
       }),
       apply: 'build'
     }

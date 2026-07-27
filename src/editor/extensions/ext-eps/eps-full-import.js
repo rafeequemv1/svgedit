@@ -62,7 +62,9 @@ const loadGhostscript = async () => {
     const locateFile = (file) => `${base}/${file}`
 
     try {
-      const mod = await import(/* @vite-ignore */ `${base}/gs.mjs`)
+      // Runtime URL (CDN or /ghostscript) — hide from rollup dynamic-import analysis
+      const importGs = new Function('u', 'return import(u)')
+      const mod = await importGs(`${base}/gs.mjs`)
       return mod.default({ locateFile })
     } catch (err) {
       console.warn('Ghostscript ESM load failed, trying script fallback:', err)
