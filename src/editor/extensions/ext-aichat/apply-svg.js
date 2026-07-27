@@ -2,7 +2,12 @@
  * Apply AI-generated SVG to the editor canvas + system prompt for conversational drawing.
  */
 
-import { pathDToPolyline, pointsToSmoothPathD, SPINE_MAX_POINTS, SPINE_MIN_DIST } from '../ext-dna/dna-math.js'
+import { pathDToPolyline } from '../ext-dna/dna-math.js'
+import {
+  shouldSmoothAiPath,
+  isAiConnectorCandidate,
+  smoothPathDForAi
+} from './ai-path-smooth.js'
 
 const LINE_ONLY_PATH = /[Ll]/
 const HAS_CURVE_CMD = /[CQcqAa]/
@@ -31,7 +36,13 @@ export function smoothAiImportedGraphics (svgEditor, root) {
     }
     if (tag === 'path') {
       const d = node.getAttribute('d') || ''
-      if (d.length > 4 && LINE_ONLY_PATH.test(d) && !HAS_CURVE_CMD.test(d)) {
+      if (!isAiConnectorCandidate(node)) return
+      if (
+        d.length > 4 && (
+          shouldSmoothAiPath(d) ||
+          (LINE_ONLY_PATH.test(d) && !HAS_CURVE_CMD.test(d))
+        )
+      ) {
         targets.push(node)
       }
       return
@@ -47,12 +58,9 @@ export function smoothAiImportedGraphics (svgEditor, root) {
         pathEl = svgCanvas.convertToPath(el)
         if (!pathEl) continue
       }
-      const pts = pathDToPolyline(pathEl.getAttribute('d') || '', 8)
-      if (pts.length < 3) continue
-      const smoothD = pointsToSmoothPathD(pts, {
-        minDist: SPINE_MIN_DIST,
-        maxPts: SPINE_MAX_POINTS
-      })
+      const d = pathEl.getAttribute('d') || ''
+      if (pathDToPolyline(d, 6).length < 3) continue
+      const smoothD = smoothPathDForAi(d)
       if (smoothD) pathEl.setAttribute('d', smoothD)
     } catch (_) { /* keep original geometry */ }
   }
@@ -458,13 +466,15 @@ ${useBrushes
 - Timelines / infographics: use a horizontal axis + compact cards (year + 1-line label + 0D/1D/2D/3D badge). Prefer ≤12 milestones so the SVG fits; group by dimension in columns if needed.
 - For DNA / molecules: use 2 smooth paths + ≤12 rung lines. No feDropShadow, feGaussianBlur, or heavy <filter> blocks (they cause truncation). Suggest the DNA helix brush for interactive paths.
 - Short caption AFTER the fence (1–2 sentences). Long intros before SVG often get the drawing cut off.
+- **Posters / graphical abstracts**: every label must describe what is drawn — scientifically accurate, concise, no meta phrases ("high-quality render", "3D illustration of"). Use short panel titles (3–6 words) + one caption sentence per panel that matches the visual.
 - Pure Q&A / how-to / brainstorming: reply in text ONLY — do not invent SVG unless they asked to draw.
 - Follow-ups like "make it blue", "add a label", "move it left": build on prior turns; redraw or extend with SVG (prefer append/selection-edit semantics unless they say replace everything).
 - No scripts, foreignObject, external images/URLs, or HTML. Use path/rect/circle/ellipse/text/g (and nested groups). Prefer \`<path d="M… C…">\` with cubic Bézier for smooth curves — avoid \`<polyline>\` and line-only \`L\` paths so users can double-click to edit nodes. Marker defs for arrowheads are OK. Science-friendly colors (avoid neon purple). font-family="sans-serif" or "serif". Simple ids (ai_1…).
+- **Flowcharts / mind maps / org charts**: connector lines MUST be smooth cubic Bézier — NEVER approximate curves with 5+ chained \`L\` segments (they render jagged). Use one \`<path fill="none" stroke="…">\` per connector branch with 1–3 \`C\` commands, e.g. \`M80,120 C80,180 200,200 280,260\`. Branching trees: separate path per branch, not one dense polyline. Box shapes use \`<rect rx="8">\` (not paths).
 - You can draw ANYTHING expressible as SVG. Never refuse a drawing request as "too complex" — simplify layout intelligently and still produce usable SVG. If unclear, ask one short clarifying question OR pick sensible defaults and say what you assumed.
 
 # What you can draw (anything SVG — non-exhaustive)
-- Flowcharts / process maps: boxes, diamonds, rounded steps, arrows, swimlanes, decision branches.
+- Flowcharts / process maps: boxes, diamonds, rounded steps, **smooth Bézier connectors**, swimlanes, decision branches.
 - Mind maps / concept maps: central hub, radiating branches, curved connectors, colored clusters.
 - Org charts, timelines, roadmaps, cycle diagrams, Venn regions, network/graph layouts.
 - Scientific figures: DNA, membranes, hydrogels, nanoparticles, pathways, apparatus, organelle cartoons, simple plots (axes + polylines).
@@ -472,6 +482,13 @@ ${useBrushes
 - Illustrations: objects, simple characters, scenes, technical callouts, geometric / isometric shapes.
 - Typography layouts, posters, badges, patterns, freeform bezier art.
 Diagram layout: margins, aligned columns, no overlapping labels, consistent gaps (~16–24px), readable type (≥12px), high-contrast text, clear arrowheads on flows.
+
+## Flowchart connector example (copy this pattern)
+\`\`\`svg
+<path fill="none" stroke="#94a3b8" stroke-width="2" d="M320,90 C320,140 180,150 120,200"/>
+<path fill="none" stroke="#94a3b8" stroke-width="2" d="M320,90 C320,140 460,150 520,200"/>
+\`\`\`
+Each curved line = ONE path with cubic C — not many L segments.
 
 # Editor tools you must know (guide users; when drawing, emulate their look)
 

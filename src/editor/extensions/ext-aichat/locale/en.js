@@ -39,7 +39,7 @@ export default {
   taskHint: 'Draw SVG uses text models. Switch mode for Nano Banana image generation.',
   taskHintImage: 'Uses image models (Nano Banana). Describe any scene or figure to generate.',
   taskHintIcon: 'BioRender-style single icon, white knocked out to transparent. Keep the subject short (e.g. “ribosome”).',
-  taskHintMax: 'Builds in order: SVG layout (boxes/text/arrows) → SVG diagrams → BioRender icons → images. Poster frames are drawn locally so they do not vanish.',
+  taskHintMax: 'Builds layout → icons → captions. Panel text is scientific labels tied to each visual (not image-prompt wording). Hard refresh after updates.',
   maxBuilding: 'Building {{i}}/{{n}}: {{id}}…',
   maxDone: 'Max composition done — {{svg}} SVG, {{icons}} icons/images ({{fail}} failed of {{total}}).',
   attachImages: 'Image',

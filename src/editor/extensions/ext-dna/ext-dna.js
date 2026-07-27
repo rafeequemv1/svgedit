@@ -295,6 +295,9 @@ const emitDnaSvg = (group, geom) => {
 
 }
 
+/** Min ms between live helix rebuilds while dragging spine nodes (pathedit). */
+const LIVE_SPINE_REGEN_MS = 85
+
 /**
  * Build / replace only the helix visuals group. Never touches the spine path
  * (so pathedit grips keep working while we live-update the DNA).
@@ -302,7 +305,7 @@ const emitDnaSvg = (group, geom) => {
  * @param {SVGElement} group
  * @param {object} attrs
  * @param {string} spineD
- * @param {{ editingSpine?: boolean }} [opts]
+ * @param {{ editingSpine?: boolean, livePreview?: boolean }} [opts]
  * @returns {boolean} true if geometry was emitted
  */
 const rebuildDnaVisuals = (group, attrs, spineD, opts = {}) => {
@@ -326,7 +329,7 @@ const rebuildDnaVisuals = (group, attrs, spineD, opts = {}) => {
 
   const geom = computeDnaGeometry(
     spineD ? { spineD, points: attrs.points } : attrs.points,
-    attrs
+    { ...attrs, livePreview: !!opts.livePreview }
   )
 
   if (geom.empty) {
@@ -487,8 +490,9 @@ export default {
     let regeneratingVisuals = false
     let editingSpineGroup = null
     let spineEditRaf = 0
+    let spineEditTrailing = 0
+    let spineEditLastAt = 0
     let spineEditLock = false
-    let spineObserver = null
     let lastLiveSpineD = ''
 
     const nextId = () => svgCanvas.getNextId()
@@ -596,50 +600,82 @@ export default {
 
     /**
      * Live-update helix from current spine `d` while dragging Bézier grips.
-     * Does NOT rewrite the spine path (pathSegList owns it during pathedit).
+     * Throttled + low-detail preview during drag; full quality on mouse-up.
      */
-    const liveRegenFromSpine = (group, spine) => {
+    const liveRegenFromSpine = (group, spine, { finalQuality = false } = {}) => {
       if (!group || !spine || regeneratingVisuals) return
-      const d = spine.getAttribute('d') || ''
-      if (!d || d === lastLiveSpineD) return
-      if (spineEditRaf) cancelAnimationFrame(spineEditRaf)
-      spineEditRaf = requestAnimationFrame(() => {
+
+      const runRebuild = () => {
         spineEditRaf = 0
         const dNow = spine.getAttribute('d') || ''
-        if (!dNow || dNow === lastLiveSpineD) return
+        if (!dNow || (!finalQuality && dNow === lastLiveSpineD)) return
         lastLiveSpineD = dNow
+        spineEditLastAt = performance.now()
         regeneratingVisuals = true
         try {
           const attrs = readDnaAttrs(group)
           attrs.spineD = dNow
           group.setAttribute('data-spine-d', dNow)
           rebuildDnaVisuals(group, attrs, dNow, {
-            editingSpine: editingSpineGroup === group ||
-              svgCanvas.getCurrentMode() === 'pathedit'
+            editingSpine: true,
+            livePreview: !finalQuality
           })
         } finally {
           regeneratingVisuals = false
         }
-      })
+      }
+
+      if (finalQuality) {
+        if (spineEditTrailing) {
+          clearTimeout(spineEditTrailing)
+          spineEditTrailing = 0
+        }
+        if (spineEditRaf) {
+          cancelAnimationFrame(spineEditRaf)
+          spineEditRaf = 0
+        }
+        runRebuild()
+        return
+      }
+
+      const now = performance.now()
+      if (now - spineEditLastAt >= LIVE_SPINE_REGEN_MS) {
+        if (spineEditTrailing) {
+          clearTimeout(spineEditTrailing)
+          spineEditTrailing = 0
+        }
+        if (!spineEditRaf) {
+          spineEditRaf = requestAnimationFrame(runRebuild)
+        }
+        return
+      }
+
+      if (spineEditTrailing) clearTimeout(spineEditTrailing)
+      spineEditTrailing = window.setTimeout(() => {
+        spineEditTrailing = 0
+        if (!spineEditRaf) {
+          spineEditRaf = requestAnimationFrame(runRebuild)
+        }
+      }, LIVE_SPINE_REGEN_MS)
     }
 
     const unwatchSpine = () => {
-      if (spineObserver) {
-        spineObserver.disconnect()
-        spineObserver = null
+      if (spineEditTrailing) {
+        clearTimeout(spineEditTrailing)
+        spineEditTrailing = 0
+      }
+      if (spineEditRaf) {
+        cancelAnimationFrame(spineEditRaf)
+        spineEditRaf = 0
       }
       lastLiveSpineD = ''
     }
 
-    /** Watch spine `d` so helix follows every grip/handle move in realtime */
+    /** Snapshot spine `d` when entering pathedit (regen driven by mouseMove + elementChanged). */
     const watchSpine = (group, spine) => {
       unwatchSpine()
-      if (!group || !spine || typeof MutationObserver === 'undefined') return
+      if (!group || !spine) return
       lastLiveSpineD = spine.getAttribute('d') || ''
-      spineObserver = new MutationObserver(() => {
-        liveRegenFromSpine(group, spine)
-      })
-      spineObserver.observe(spine, { attributes: true, attributeFilter: ['d'] })
     }
 
     const beginSpineEdit = (group) => {
@@ -968,11 +1004,11 @@ export default {
           const isSpine = pathElem?.getAttribute?.('data-role') === 'spine'
           // path.dragging is set while a node/handle is being dragged
           const dragging = !!(pathObj?.dragging || pathObj?.dragctrl)
-          if (isSpine && (dragging || editingSpineGroup)) {
+          if (isSpine && dragging) {
             const group = findDnaGroup(pathElem) || editingSpineGroup
             if (group) {
               if (!editingSpineGroup) editingSpineGroup = group
-              if (dragging) liveRegenFromSpine(group, pathElem)
+              liveRegenFromSpine(group, pathElem)
             }
             return undefined
           }
@@ -1099,8 +1135,7 @@ export default {
         if (el.getAttribute?.('data-role') === 'spine') {
           const group = findDnaGroup(el)
           if (group) {
-            liveRegenFromSpine(group, el)
-            // Ensure attrs snapshot is current for undo/panel
+            liveRegenFromSpine(group, el, { finalQuality: true })
             const d = el.getAttribute('d') || ''
             if (d) group.setAttribute('data-spine-d', d)
           }

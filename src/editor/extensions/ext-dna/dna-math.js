@@ -406,11 +406,14 @@ const labelPointOutside = (point, neighbor, side, gap) => {
  * Sample helix strand positions along a sampler (LabCanvas drawNucleicAcidHelixCanvas2D).
  * @param {{pathLength:number, at:Function}} sampler
  * @param {object} hp helix params from thickness
+ * @param {boolean} [preview] coarser/faster sampling while dragging spine nodes
  */
-const sampleHelix = (sampler, hp) => {
+const sampleHelix = (sampler, hp, preview = false) => {
   const pathLength = sampler.pathLength
   if (pathLength <= 0) return { pathLength: 0, samples: [] }
-  const step = Math.max(3, Math.min(8, hp.twistPitch / 22))
+  const step = preview
+    ? Math.max(14, hp.twistPitch / 5)
+    : Math.max(3, Math.min(8, hp.twistPitch / 22))
   const samples = []
   for (let s = 0; s <= pathLength; s += step) {
     const { point, angle } = sampler.at(s)
@@ -587,13 +590,14 @@ export const resolveDnaSampler = (source) => {
  */
 export const computeDnaGeometry = (source, userParams = {}) => {
   const params = { ...DEFAULTS, ...userParams }
+  const preview = !!params.livePreview
   const hp = helixParamsFromThickness(params.thickness)
   const sampler = resolveDnaSampler(source)
   if (!sampler) {
     return { pathLength: 0, empty: true }
   }
 
-  const { pathLength, samples } = sampleHelix(sampler, hp)
+  const { pathLength, samples } = sampleHelix(sampler, hp, preview)
   if (pathLength < 2 || samples.length < 2) {
     return { pathLength, empty: true, spineD: sampler.hitD }
   }
@@ -604,15 +608,15 @@ export const computeDnaGeometry = (source, userParams = {}) => {
   const frontA = strandPathD(samples, pickA, 'front')
   const backB = params.singleStrandOnly ? '' : strandPathD(samples, pickB, 'back')
   const frontB = params.singleStrandOnly ? '' : strandPathD(samples, pickB, 'front')
-  const rungs = computeRungs(sampler, pathLength, hp, params)
-  const histones = computeHistones(sampler, pathLength, hp, params)
+  const rungs = preview ? [] : computeRungs(sampler, pathLength, hp, params)
+  const histones = preview ? [] : computeHistones(sampler, pathLength, hp, params)
 
   // Molecular atoms/bonds
   let molBondsBack = ''
   let molBondsFront = ''
   let molAtoms = ''
   let molMids = ''
-  if (params.styleMode === 'molecular') {
+  if (!preview && params.styleMode === 'molecular') {
     const step = 2
     const atomR = Math.max(1.4, hp.strandWidth * 0.25)
     for (let i = step; i < samples.length; i += step) {
@@ -645,7 +649,7 @@ export const computeDnaGeometry = (source, userParams = {}) => {
 
   // Polarity 5'/3'
   const polarity = []
-  if (params.showDirectionality && samples.length >= 2) {
+  if (!preview && params.showDirectionality && samples.length >= 2) {
     const first = samples[0]
     const firstNext = samples[Math.min(1, samples.length - 1)]
     const last = samples[samples.length - 1]
@@ -662,7 +666,7 @@ export const computeDnaGeometry = (source, userParams = {}) => {
 
   // Annotations
   const annotations = []
-  if (params.annotationEveryBp > 0) {
+  if (!preview && params.annotationEveryBp > 0) {
     const stride = hp.basePairSpacing * params.annotationEveryBp
     let idx = 0
     const fontSize = Math.max(8, 6.5 + hp.thickness * 2.2)

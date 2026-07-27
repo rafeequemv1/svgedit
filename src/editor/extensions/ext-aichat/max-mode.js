@@ -69,7 +69,12 @@ Planning rules:
 - Max ${MAX_ITEMS} items total, max ${MAX_ICONS} icon/image items (cost control). Prefer fewer strong pieces.
 - Coordinates are absolute on the canvas; items must not wildly overlap unless intentional layering.
 - Order items back-to-front (background first).
-- Each prompt must be self-contained and specific.
+- Each prompt must be self-contained and specific (for image/SVG generation only).
+
+**Reader-facing text (critical):** For every icon/image panel, also set:
+- \`label\`: short scientific heading (3–6 words, ≤42 chars) shown on the poster — e.g. "Spherical NP dispersion", "Aligned CNT nanowires". NO words like "render", "icon", "BioRender", "high-quality", "3D".
+- \`caption\`: one accurate sentence (≤110 chars) describing what the viewer sees in plain scientific language — must match the visual and the user's topic. Example: "Gold and quantum dot nanoparticles uniformly dispersed in a cross-linked polymer matrix."
+- \`prompt\` is ONLY for the image generator (can mention style/render) — never copy prompt wording into label/caption.
 - User request: ${userRequest.slice(0, 4000)}
 ${canvasSvg ? `\nExisting canvas SVG context (optional reference, truncated):\n${canvasSvg.slice(0, 6000)}` : ''}
 `
@@ -113,7 +118,9 @@ function normalizePlan (plan) {
         w: Math.max(24, Math.round(Number(it.w) || 120)),
         h: Math.max(24, Math.round(Number(it.h) || 80)),
         prompt: String(it.prompt || it.label || '').trim(),
-        displayTitle: String(it.displayTitle || '').trim()
+        label: String(it.label || it.displayTitle || '').trim(),
+        caption: String(it.caption || '').trim(),
+        displayTitle: String(it.displayTitle || it.label || '').trim()
       }
     })
     .filter((it) => it.prompt)
@@ -173,7 +180,7 @@ export function composeWorkflowLayout (plan) {
 
   for (let i = 0; i < n; i++) {
     const x = margin + i * (colW + gap)
-    const stepTitle = shortStepLabel(picked[i].prompt, i)
+    const copy = derivePanelCopy(picked[i], i, title)
     items.push({
       id: `panel_${i + 1}`,
       kind: 'svg',
@@ -182,8 +189,8 @@ export function composeWorkflowLayout (plan) {
       y: contentTop,
       w: colW,
       h: contentH,
-      prompt: stepTitle,
-      displayTitle: `Step ${i + 1}. ${stepTitle}`
+      prompt: copy.label,
+      displayTitle: `Step ${i + 1}`
     })
   }
 
@@ -221,8 +228,7 @@ export function composeWorkflowLayout (plan) {
 
   for (let i = 0; i < n; i++) {
     const x = margin + i * (colW + gap)
-    const stepTitle = shortStepLabel(picked[i].prompt, i)
-    const detail = shortStepDetail(picked[i].prompt)
+    const copy = derivePanelCopy(picked[i], i, title)
     const cy = contentTop + 52 + iconSize + 18
     items.push({
       id: `caption_${i + 1}`,
@@ -232,9 +238,9 @@ export function composeWorkflowLayout (plan) {
       y: cy,
       w: colW - 28,
       h: Math.max(60, contentTop + contentH - cy - 12),
-      prompt: `${stepTitle}. ${detail}`,
-      displayTitle: stepTitle,
-      lines: [stepTitle, detail].filter(Boolean)
+      prompt: copy.caption,
+      displayTitle: copy.label,
+      lines: [copy.label, copy.caption].filter(Boolean)
     })
   }
 
@@ -247,29 +253,76 @@ export function composeWorkflowLayout (plan) {
   }
 }
 
-function shortStepLabel (prompt, index) {
-  const p = String(prompt || '')
-  const named = p.match(/(?:of|showing|icon of|depicting)\s+([^:.,\n]{4,48})/i)
-  if (named?.[1]) return cleanLabel(named[1])
-  const before = p.split(/[:.—–-]/)[0]
-  if (before && before.length > 3 && before.length < 42) return cleanLabel(before)
-  return `Step ${index + 1}`
+function derivePanelCopy (item, index, topic = '') {
+  const label = sanitizeScientificText(
+    item.label || item.displayTitle || deriveStepLabel(item.prompt, index, topic)
+  )
+  const caption = sanitizeScientificText(
+    item.caption || deriveStepCaption(item.prompt, label, topic)
+  )
+  return {
+    label: truncateAtWord(label, 48),
+    caption: truncateAtWord(caption, 110)
+  }
 }
 
-function shortStepDetail (prompt) {
-  const p = String(prompt || '').replace(/\s+/g, ' ').trim()
-  const chem = p.match(/\b([A-Z][a-z]?(?:\d+)?(?:[A-Z][a-z]?(?:\d+)?)*(?:\s*\+\s*[A-Za-z0-9()]+)?)\b/)
-  if (chem?.[1] && chem[1].length < 40) return chem[1]
-  const clause = p.split(/[.;]/)[0]
-  return cleanLabel(clause).slice(0, 56)
-}
-
-function cleanLabel (s) {
-  return String(s || '')
-    .replace(/^(BioRender|scientific|vector|icon|style|of|a|an)\s+/ig, '')
+/** Strip image-prompt / meta language — keep reader-facing science text. */
+function sanitizeScientificText (s) {
+  let t = String(s || '')
+    .replace(/\b(?:high[- ]quality|professional|clean|detailed|realistic|photorealistic)\b/gi, '')
+    .replace(/\b(?:3d|2d)\s+(?:scientific\s+)?(?:render(?:ing)?|illustration|visualization)\b/gi, '')
+    .replace(/\b(?:scientific\s+)?(?:render(?:ing)?|illustration|visualization|depiction)\s+of\b/gi, '')
+    .replace(/\b(?:biorender(?:[- ]style)?|icon\s+of|image\s+of|picture\s+of|showing|depicting)\b/gi, '')
+    .replace(/\b(?:single\s+subject|white\s+background|cutout|no\s+text|padding)\b/gi, '')
+    .replace(/\b(?:create|generate|make)\s+(?:a|an|one)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/^./, (c) => c.toUpperCase())
+  // Drop leading articles / style words left after stripping
+  t = t.replace(/^(?:a|an|the|of)\s+/i, '').trim()
+  return t.replace(/^./, (c) => c.toUpperCase())
+}
+
+function deriveStepLabel (prompt, index, topic = '') {
+  const raw = sanitizeScientificText(prompt)
+  if (!raw) return topic ? truncateAtWord(topic, 36) : `Panel ${index + 1}`
+  const clause = raw.split(/[.;]/)[0].trim()
+  const words = clause.split(/\s+/).filter(Boolean)
+  if (words.length >= 2) {
+    return truncateAtWord(words.slice(0, Math.min(6, words.length)).join(' '), 42)
+  }
+  return truncateAtWord(clause, 42) || `Step ${index + 1}`
+}
+
+function deriveStepCaption (prompt, label, topic = '') {
+  const raw = sanitizeScientificText(prompt)
+  if (!raw) return label
+  let cap = raw
+  const labelPrefix = label.toLowerCase().slice(0, Math.min(18, label.length))
+  if (labelPrefix && cap.toLowerCase().startsWith(labelPrefix)) {
+    const rest = cap.slice(label.length).replace(/^[\s,;:–-]+/, '').trim()
+    if (rest.length > 12) cap = rest
+  }
+  const parts = cap
+    .split(/[.;]|\s+—\s+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 10)
+  cap = parts[0] || cap
+  if (cap.length < 20 && topic) {
+    const t = truncateAtWord(topic, 50)
+    if (t && !cap.toLowerCase().includes(t.toLowerCase().slice(0, 10))) {
+      cap = `${cap} — ${t}`
+    }
+  }
+  if (!/[.!?]$/.test(cap) && cap.length > 12) cap += '.'
+  return cap
+}
+
+function truncateAtWord (s, max) {
+  const t = String(s || '').trim()
+  if (t.length <= max) return t
+  const cut = t.slice(0, max - 1)
+  const sp = cut.lastIndexOf(' ')
+  return (sp > max * 0.55 ? cut.slice(0, sp) : cut).trim() + '…'
 }
 
 /**
@@ -583,9 +636,9 @@ export function buildStructuralSvgFallback (item, planTitle = '') {
   if (roleL.includes('caption') || roleL.includes('label') || roleL.includes('annotation') ||
       idL.includes('caption') || idL.includes('label') || idL.includes('annotation')) {
     const rows = Array.isArray(lines) && lines.length
-      ? lines.map((l) => String(l).trim()).filter(Boolean).slice(0, 5)
-      : [title]
-    const maxChars = Math.max(8, Math.floor(w / 7.2))
+      ? lines.map((l) => sanitizeScientificText(l)).filter(Boolean).slice(0, 4)
+      : [sanitizeScientificText(title)]
+    const maxChars = Math.max(10, Math.floor(w / 6.2))
     const wrapped = []
     rows.forEach((line) => {
       wrapLines(String(line), maxChars).forEach((ln) => wrapped.push(ln))
