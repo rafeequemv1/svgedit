@@ -1036,6 +1036,11 @@ ul li.current {
   gap: 8px;
 }
 
+.chart_panel select optgroup {
+  font-weight: 600;
+  color: var(--prop-header-color);
+}
+
 .chart_panel .prop-header {
   font-size: 9pt;
   color: var(--prop-header-color);

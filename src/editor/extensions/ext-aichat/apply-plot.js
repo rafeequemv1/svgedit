@@ -133,10 +133,11 @@ export function buildPlotAnalysisPromptSection () {
   return `# CSV plot exploration (suggest only — do NOT emit vega-lite yet)
 The user attached CSV data and wants analysis suggestions.
 
-1. List 4–8 suitable plot types from the Vega-Lite catalog (bar, line, scatter, histogram, boxplot, heatmap, pie, etc.).
-2. For each, name the columns you would use and the scientific question it answers.
-3. End with: "Reply **yes** or name the plots you want (e.g. bar + scatter), and I will generate them."
-4. Do NOT output \`\`\`vega-lite blocks until the user confirms.`
+List suitable options from ALL Vega-Lite families (bar/column, line/step, scatter/bubble, area/stream, histogram/density, box/error, heatmap, pie/donut, Gantt/ranged, strip/tick, radar, faceted small multiples).
+
+For each suggestion: name the chart type, columns to use, and the scientific question it answers.
+End with: "Reply **yes** or name the plots you want (e.g. grouped bar + scatter + heatmap), and I will generate them."
+Do NOT output \`\`\`vega-lite blocks until the user confirms.`
 }
 
 /**

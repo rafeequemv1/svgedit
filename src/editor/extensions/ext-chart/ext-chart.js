@@ -5,14 +5,12 @@
 import {
   findChartGroup,
   readPlotSpec,
-  getMarkType,
-  setMarkType,
   getTitle,
   setTitle,
   specColumnNames,
   rerenderChartGroup
 } from './chart-spec.js'
-import { VEGA_MARK_TYPES } from './chart-templates.js'
+import { buildMarkTypeSelectHtml, guessTemplateIdFromSpec, buildTemplateSpec } from './chart-templates.js'
 
 const name = 'chart'
 
@@ -38,31 +36,6 @@ function encodingField (spec, channel) {
   if (typeof enc.field === 'string') return enc.field
   if (Array.isArray(enc)) return enc[0]?.field || ''
   return ''
-}
-
-/**
- * @param {object} spec
- * @param {string} channel
- * @param {string} field
- * @param {string} [type]
- */
-function setEncodingField (spec, channel, field, type = 'quantitative') {
-  const copy = JSON.parse(JSON.stringify(spec))
-  if (!copy.encoding) copy.encoding = {}
-  if (!field) {
-    delete copy.encoding[channel]
-    return copy
-  }
-  const prev = copy.encoding[channel]
-  const inferred = /count|value|score|amount|rate|percent|fold|expression/i.test(field)
-    ? 'quantitative'
-    : 'nominal'
-  copy.encoding[channel] = {
-    ...(prev && typeof prev === 'object' ? prev : {}),
-    field,
-    type: prev?.type || type || inferred
-  }
-  return copy
 }
 
 export default {
@@ -115,11 +88,8 @@ export default {
         return
       }
       showPanel(true)
-      const mark = getMarkType(spec)
-      if (markSel) {
-        const match = VEGA_MARK_TYPES.find((m) => m.mark === mark)
-        markSel.value = match?.id || 'bar'
-      }
+      const tplId = guessTemplateIdFromSpec(spec)
+      if (markSel) markSel.value = tplId
       if (titleIn) titleIn.value = getTitle(spec)
       const cols = specColumnNames(spec)
       fillSelect(xSel, cols, encodingField(spec, 'x') || encodingField(spec, 'theta'))
@@ -132,24 +102,27 @@ export default {
     const readPanelToSpec = () => {
       const spec = readPlotSpec(activeGroup)
       if (!spec) return null
-      let next = JSON.parse(JSON.stringify(spec))
-      const tpl = VEGA_MARK_TYPES.find((m) => m.id === $id('chart_mark_type')?.value)
-      if (tpl) next = setMarkType(next, tpl.mark)
-      next = setTitle(next, ($id('chart_title')?.value || '').trim())
+      const tplId = $id('chart_mark_type')?.value || 'bar'
+      const cols = specColumnNames(spec)
+      let next = tplId === guessTemplateIdFromSpec(spec)
+        ? JSON.parse(JSON.stringify(spec))
+        : buildTemplateSpec(cols.length ? cols : ['category', 'value'], tplId)
+      if (!next.data?.values?.length && spec.data?.values?.length) {
+        next.data = { values: spec.data.values }
+      }
+      next = setTitle(next, ($id('chart_title')?.value || '').trim() || getTitle(spec))
       const x = $id('chart_x_field')?.value
       const y = $id('chart_y_field')?.value
       const color = $id('chart_color_field')?.value
-      if (getMarkType(next) === 'arc') {
-        if (x) next = setEncodingField(next, 'color', x, 'nominal')
-        if (y) next = setEncodingField(next, 'theta', y, 'quantitative')
-      } else {
-        if (x) next = setEncodingField(next, 'x', x)
-        if (y) next = setEncodingField(next, 'y', y)
+      if (x) {
+        if (next.encoding?.x) next.encoding.x.field = x
+        else if (next.encoding?.theta) next.encoding.color = { field: x, type: 'nominal' }
       }
-      if (color) next = setEncodingField(next, 'color', color, 'nominal')
-      else if (next.encoding?.color && !$id('chart_color_field')?.value) {
-        delete next.encoding.color
+      if (y) {
+        if (next.encoding?.y) next.encoding.y.field = y
+        else if (next.encoding?.theta) next.encoding.theta = { field: y, type: 'quantitative' }
       }
+      if (color && next.encoding?.color) next.encoding.color.field = color
       const w = Number($id('chart_width')?.value)
       const h = Number($id('chart_height')?.value)
       if (Number.isFinite(w) && w > 0) next.width = w
@@ -181,9 +154,7 @@ export default {
     return {
       name: t(svgEditor, 'name'),
       callback () {
-        const markOptions = VEGA_MARK_TYPES.map((m) =>
-          `<option value="${m.id}">${m.label}</option>`
-        ).join('')
+        const markOptions = buildMarkTypeSelectHtml()
 
         const host = $id('right_charts_extensions') || $id('right_properties_extensions')
         if (!host) return
