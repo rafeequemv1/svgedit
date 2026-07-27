@@ -29,14 +29,17 @@ function wrapSvg (inner, w, h) {
  */
 export async function vegaSpecToSvg (spec, size = { w: 640, h: 400 }) {
   const embed = await loadVegaEmbed()
-  const w = Math.max(280, Math.round(spec.width || size.w - 48))
-  const h = Math.max(200, Math.round(spec.height || size.h - 80))
-  const vs = { ...spec, width: w, height: h }
+  const w = Math.max(120, Math.round(spec.width || size.w - 48))
+  const h = Math.max(96, Math.round(spec.height || size.h - 80))
+  const vs = JSON.parse(JSON.stringify(spec))
+  vs.width = w
+  vs.height = h
+  delete vs.autosize
   const host = document.createElement('div')
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:1px;height:1px;overflow:hidden'
+  host.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;overflow:hidden;visibility:hidden`
   document.body.appendChild(host)
   try {
-    const result = await embed(host, vs, { actions: false, renderer: 'svg' })
+    const result = await embed(host, vs, { actions: false, renderer: 'svg', tooltip: false })
     const svg = await result.view.toSVG()
     result.view.finalize()
     return wrapSvg(svg, w, h)

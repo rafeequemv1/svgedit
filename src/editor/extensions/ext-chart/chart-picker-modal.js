@@ -2,69 +2,27 @@
  * Chart type picker modal (main workarea) with Vega-Lite previews.
  */
 
+import { vegaSpecToSvg } from '../ext-aichat/vega-render.js'
 import {
   VEGA_MARK_TYPES,
   VEGA_MARK_CATEGORIES,
   buildPreviewSpec,
+  buildChartSpecForCreate,
   getChartTemplateMeta
 } from './chart-templates.js'
 
-/** @type {Promise<any>|null} */
-let vegaEmbedReady = null
-
-async function loadVegaEmbed () {
-  if (!vegaEmbedReady) {
-    vegaEmbedReady = import('vega-embed').then((m) => m.default || m)
-  }
-  return vegaEmbedReady
-}
-
 /**
- * Scale embedded Vega SVG to fill the preview card without clipping.
  * @param {HTMLElement} host
+ * @param {string} svgStr
  */
-function fitPreviewSvg (host) {
+function mountPreviewSvg (host, svgStr) {
+  host.innerHTML = svgStr
   const svg = host.querySelector('svg')
   if (!svg) return
-
-  let w = parseFloat(svg.getAttribute('width') || '')
-  let h = parseFloat(svg.getAttribute('height') || '')
-  const vb = svg.getAttribute('viewBox')
-  if (vb) {
-    const parts = vb.trim().split(/[\s,]+/).map(Number)
-    if (parts.length === 4) {
-      w = parts[2]
-      h = parts[3]
-    }
-  }
-  if (!w || !h) {
-    try {
-      const box = svg.getBBox()
-      w = box.width
-      h = box.height
-    } catch {
-      return
-    }
-  }
-  if (!w || !h) return
-
-  svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-  svg.removeAttribute('width')
-  svg.removeAttribute('height')
   svg.style.width = '100%'
   svg.style.height = '100%'
   svg.style.display = 'block'
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
-
-  const wrap = svg.parentElement
-  if (wrap && wrap !== host) {
-    wrap.style.width = '100%'
-    wrap.style.height = '100%'
-    wrap.style.display = 'flex'
-    wrap.style.alignItems = 'center'
-    wrap.style.justifyContent = 'center'
-    wrap.style.overflow = 'hidden'
-  }
 }
 
 /**
@@ -74,43 +32,24 @@ function fitPreviewSvg (host) {
 async function renderPreview (host, baseSpec) {
   if (host.dataset.rendered === '1') return
 
-  const paint = async () => {
-    const w = Math.max(96, Math.round(host.clientWidth || 148))
-    const h = Math.max(72, Math.round(host.clientHeight || 104))
-    const spec = {
-      ...baseSpec,
-      width: w,
-      height: h,
-      autosize: { type: 'fit', contains: 'padding' }
-    }
-    host.replaceChildren()
-    const embed = await loadVegaEmbed()
-    await embed(host, spec, {
-      actions: false,
-      renderer: 'svg',
-      tooltip: false,
-      defaultStyle: false
-    })
-    fitPreviewSvg(host)
-  }
-
   try {
+    // Wait for grid layout so card has real dimensions.
     await new Promise((resolve) => requestAnimationFrame(resolve))
-    await paint()
-    host.dataset.rendered = '1'
+    await new Promise((resolve) => requestAnimationFrame(resolve))
 
-    if (typeof ResizeObserver !== 'undefined') {
-      let timer = 0
-      const ro = new ResizeObserver(() => {
-        clearTimeout(timer)
-        timer = window.setTimeout(() => {
-          fitPreviewSvg(host)
-        }, 80)
-      })
-      ro.observe(host)
-      host._previewRo = ro
-    }
-  } catch {
+    const rect = host.getBoundingClientRect()
+    const w = Math.max(140, Math.round(rect.width) || 156)
+    const h = Math.max(88, Math.round(rect.height) || 96)
+    const spec = JSON.parse(JSON.stringify(baseSpec))
+    spec.width = w
+    spec.height = h
+    delete spec.autosize
+
+    const svgStr = await vegaSpecToSvg(spec, { w, h })
+    mountPreviewSvg(host, svgStr)
+    host.dataset.rendered = '1'
+  } catch (err) {
+    console.warn('Chart preview failed', err)
     host.replaceChildren()
     const fallback = document.createElement('span')
     fallback.className = 'ai_chart_preview_fallback'
@@ -130,6 +69,7 @@ export function openChartPickerModal (opts) {
   const {
     onCreate,
     onClose,
+    csvFiles = null,
     labels = {}
   } = opts
 
@@ -262,19 +202,23 @@ export function openChartPickerModal (opts) {
     }
   })
 
-  // Lazy-render previews in batches
+  // Lazy-render previews in small batches after modal is visible.
   const previewHosts = [...overlay.querySelectorAll('.ai_chart_pick_preview')]
   let idx = 0
   const batch = () => {
-    const slice = previewHosts.slice(idx, idx + 8)
-    idx += 8
+    const slice = previewHosts.slice(idx, idx + 4)
+    idx += 4
     slice.forEach((host) => {
       const id = host.getAttribute('data-preview-id')
-      if (id) renderPreview(host, buildPreviewSpec(id))
+      if (!id) return
+      const base = csvFiles?.length
+        ? buildChartSpecForCreate(id, csvFiles)
+        : buildPreviewSpec(id)
+      renderPreview(host, base)
     })
     if (idx < previewHosts.length) requestAnimationFrame(batch)
   }
-  requestAnimationFrame(batch)
+  requestAnimationFrame(() => requestAnimationFrame(batch))
 
   return { close, selectCard }
 }

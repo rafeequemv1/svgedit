@@ -147,6 +147,7 @@ export async function rerenderChartGroup (svgEditor, group, spec, csvFiles = nul
   const { svgCanvas } = svgEditor
   const csv = csvFiles?.[0] || null
   const fullSpec = injectCsvIntoVegaSpec(spec, csv)
+  delete fullSpec.autosize
   const w = Number(fullSpec.width) || 520
   const h = Number(fullSpec.height) || 320
   const svgStr = await vegaSpecToSvg(fullSpec, { w: w + 48, h: h + 80 })

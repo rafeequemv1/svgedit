@@ -47,6 +47,12 @@ export default {
     let activeGroup = null
     let rerenderTimer = 0
     let busy = false
+    let pendingRerender = false
+
+    const setStatus = (msg) => {
+      const el = $id('chart_panel_status')
+      if (el) el.textContent = msg || ''
+    }
 
     const showPanel = (on) => {
       const panel = $id('chart_panel')
@@ -173,14 +179,8 @@ export default {
       const color = $id('chart_color_field')?.value
       const size = $id('chart_size_field')?.value
 
-      if (x) {
-        if (next.encoding?.x) next.encoding.x.field = x
-        else if (next.encoding?.theta) next.encoding.theta = { field: x, type: 'nominal' }
-      }
-      if (y) {
-        if (next.encoding?.y) next.encoding.y.field = y
-        else if (next.encoding?.theta) next.encoding.theta = { field: y, type: 'quantitative' }
-      }
+      if (x && next.encoding?.x) next.encoding.x.field = x
+      if (y && next.encoding?.y) next.encoding.y.field = y
       if (color) {
         if (!next.encoding) next.encoding = {}
         next.encoding.color = { field: color, type: 'nominal' }
@@ -198,22 +198,36 @@ export default {
       return next
     }
 
-    const scheduleRerender = () => {
-      if (!activeGroup || busy) return
-      clearTimeout(rerenderTimer)
-      rerenderTimer = window.setTimeout(async () => {
-        const spec = readPanelToSpec()
-        if (!spec || !activeGroup) return
-        busy = true
-        try {
-          await rerenderChartGroup(svgEditor, activeGroup, spec)
-          toggleColorMode(spec)
-        } catch (err) {
-          console.warn('Chart rerender failed', err)
-        } finally {
-          busy = false
+    const runRerender = async () => {
+      if (!activeGroup) return
+      if (busy) {
+        pendingRerender = true
+        return
+      }
+      const spec = readPanelToSpec()
+      if (!spec) return
+      busy = true
+      setStatus(t(svgEditor, 'updating'))
+      try {
+        await rerenderChartGroup(svgEditor, activeGroup, spec)
+        toggleColorMode(spec)
+      } catch (err) {
+        console.warn('Chart rerender failed', err)
+        setStatus(t(svgEditor, 'updateFailed'))
+      } finally {
+        busy = false
+        if (!pendingRerender) setStatus('')
+        if (pendingRerender) {
+          pendingRerender = false
+          runRerender()
         }
-      }, 280)
+      }
+    }
+
+    const scheduleRerender = () => {
+      if (!activeGroup) return
+      clearTimeout(rerenderTimer)
+      rerenderTimer = window.setTimeout(runRerender, 100)
     }
 
     const schemeOptions = COLOR_SCHEMES.map((s) => `<option value="${s}">${s}</option>`).join('')
@@ -305,6 +319,7 @@ export default {
               <button type="button" id="chart_apply_btn" class="ai_btn secondary">${t(svgEditor, 'apply')}</button>
               <button type="button" id="chart_ask_ai_btn" class="ai_btn secondary">${t(svgEditor, 'askAi')}</button>
             </div>
+            <p id="chart_panel_status" class="chart_panel_status" aria-live="polite"></p>
           </div>
         `
         host.appendChild(wrap)

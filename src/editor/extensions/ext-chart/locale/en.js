@@ -31,6 +31,7 @@ export default {
   legendPosition: 'Legend position',
   apply: 'Update chart',
   updating: 'Updating chart…',
+  updateFailed: 'Chart update failed.',
   noSelection: 'No chart selected.',
   askAi: 'Ask AI to edit chart',
   buttons: [{

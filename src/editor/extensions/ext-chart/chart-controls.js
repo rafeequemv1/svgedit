@@ -138,18 +138,26 @@ export function applyControlValues (spec, values) {
   if (markType === 'arc' && Number(values.innerRadius) > 0) {
     mark.innerRadius = Number(values.innerRadius)
   }
-  if (values.markStroke) mark.stroke = values.markStroke
+  if (values.markStroke) {
+    const stroke = normalizeHex(values.markStroke) || values.markStroke
+    mark.stroke = stroke
+    next.mark = mark
+  }
   next.mark = mark
 
   if (!hasColorField(next) && values.markFill) {
     if (!next.encoding) next.encoding = {}
-    next.encoding.color = { value: values.markFill }
-    mark.fill = values.markFill
+    const fill = normalizeHex(values.markFill) || values.markFill
+    next.encoding.color = { value: fill }
+    mark.fill = fill
     next.mark = mark
   } else if (hasColorField(next) && values.colorScheme) {
     if (!next.encoding.color) next.encoding.color = {}
-    if (!next.encoding.color.scale) next.encoding.color.scale = {}
-    next.encoding.color.scale.scheme = values.colorScheme
+    next.encoding.color.type = next.encoding.color.type || 'nominal'
+    next.encoding.color.scale = {
+      ...(next.encoding.color.scale || {}),
+      scheme: values.colorScheme
+    }
   }
 
   const pad = Math.max(0, Number(values.padding) || 0)

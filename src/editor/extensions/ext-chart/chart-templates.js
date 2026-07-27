@@ -87,6 +87,14 @@ export const CHART_SAMPLE_ROWS = [
   { category: 'C', series: 'S2', value: 28, start: 25, end: 60, size: 16, facet: 'R2' }
 ]
 
+/** Smaller dataset for gallery thumbnails (clearer at small sizes). */
+export const PREVIEW_SAMPLE_ROWS = [
+  { category: 'A', series: 'S1', value: 32, start: 4, end: 26, size: 16, facet: 'G1' },
+  { category: 'B', series: 'S1', value: 52, start: 12, end: 40, size: 22, facet: 'G1' },
+  { category: 'C', series: 'S1', value: 38, start: 20, end: 48, size: 18, facet: 'G2' },
+  { category: 'A', series: 'S2', value: 24, start: 8, end: 30, size: 14, facet: 'G2' }
+]
+
 /**
  * @param {string} templateId
  * @param {Array<{columns:string[],rows:object[]}>|null} [csvFiles]
@@ -109,10 +117,14 @@ export function buildChartSpecForCreate (templateId, csvFiles = null) {
  * @param {string} templateId
  */
 export function buildPreviewSpec (templateId) {
-  const spec = buildChartSpecForCreate(templateId, null)
+  const columns = ['category', 'series', 'value', 'start', 'end', 'size', 'facet']
+  const spec = buildTemplateSpec(columns, templateId)
+  spec.$schema = SCHEMA
+  spec.data = { values: PREVIEW_SAMPLE_ROWS.slice() }
   spec.title = null
   delete spec.width
   delete spec.height
+  delete spec.autosize
 
   // Faceted layouts overflow small cards — preview the base mark only.
   if (spec.facet) delete spec.facet
@@ -121,23 +133,26 @@ export function buildPreviewSpec (templateId) {
 
   if (templateId === 'arc_donut') {
     spec.mark = typeof spec.mark === 'object'
-      ? { ...spec.mark, type: 'arc', innerRadius: 28 }
-      : { type: 'arc', innerRadius: 28 }
+      ? { ...spec.mark, type: 'arc', innerRadius: 22 }
+      : { type: 'arc', innerRadius: 22 }
   }
 
-  spec.padding = { left: 6, right: 6, top: 6, bottom: 6 }
-  spec.autosize = { type: 'fit', contains: 'padding' }
+  spec.padding = 4
   spec.config = {
     view: { stroke: null },
-    background: 'transparent',
+    background: '#ffffff',
     axis: {
-      labelFontSize: 7,
+      labelFontSize: 8,
       ticks: false,
-      domain: false,
+      domain: true,
+      grid: false,
       labelPadding: 2,
-      labelLimit: 32
+      labelLimit: 24
     },
-    legend: { disable: true }
+    legend: { disable: true },
+    range: {
+      category: ['#4c78a8', '#f58518', '#e45756', '#72b7b2', '#54a24b']
+    }
   }
   return spec
 }
@@ -153,15 +168,22 @@ export function getChartTemplateMeta (templateId) {
  * @param {string[]} columns
  */
 function pickColumns (columns) {
-  const cat = columns.find((c) => /category|group|name|label|type|gene|sample|series|condition/i.test(c)) || columns[0] || 'category'
-  const val = columns.find((c) => /value|count|amount|score|fold|expression|rate|percent|y/i.test(c)) ||
-    columns.find((c) => c !== cat) || columns[1] || 'value'
-  const series = columns.find((c) => c !== cat && c !== val && /series|group|color|condition|treatment/i.test(c)) ||
-    columns.find((c) => c !== cat && c !== val) || cat
-  const start = columns.find((c) => /start|begin|from|x0|t0/i.test(c)) || cat
-  const end = columns.find((c) => /end|finish|to|x1|t1/i.test(c)) || val
-  const size = columns.find((c) => /size|radius|magnitude/i.test(c)) || val
-  const facet = columns.find((c) => /facet|panel|split|replicate/i.test(c)) || series
+  const cols = (columns || []).map(String)
+  const find = (re, exclude = []) => cols.find((c) => re.test(c) && !exclude.includes(c))
+  // Prefer explicit value-like names. Do NOT match bare "y" inside words (e.g. "category").
+  const cat = find(/^(category|group|name|label|type|gene|sample|condition)$/i) ||
+    find(/category|group|name|label|gene|sample|condition/i) ||
+    cols[0] || 'category'
+  const val = find(/^(value|count|amount|score|fold|expression|rate|percent|y)$/i, [cat]) ||
+    find(/value|count|amount|score|expression|rate|percent/i, [cat]) ||
+    cols.find((c) => c !== cat) || cols[1] || 'value'
+  const series = find(/^(series|group|color|condition|treatment)$/i, [cat, val]) ||
+    find(/series|color|treatment/i, [cat, val]) ||
+    cols.find((c) => c !== cat && c !== val) || cat
+  const start = find(/^(start|begin|from|x0|t0)$/i) || find(/start|begin|from/i) || cat
+  const end = find(/^(end|finish|to|x1|t1)$/i) || find(/end|finish/i) || val
+  const size = find(/^(size|radius|magnitude)$/i, [cat, val]) || find(/size|radius|magnitude/i, [cat, val]) || val
+  const facet = find(/^(facet|panel|split|replicate)$/i, [cat, val]) || find(/facet|panel|split|replicate/i, [cat, val]) || series
   return { cat, val, series, start, end, size, facet }
 }
 
@@ -198,9 +220,9 @@ export function buildTemplateSpec (columns, templateId = 'bar') {
       return { ...base, mark: { type: 'line', point: true }, encoding: { x: { field: start, type: 'nominal' }, x2: { field: end, type: 'nominal' }, y: { field: cat, type: 'nominal' }, detail: { field: cat, type: 'nominal' } } }
     case 'circle':
     case 'square':
-      return { ...base, mark: templateId, encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, color: { field: series, type: 'nominal' } } }
+      return { ...base, mark: templateId, encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, color: { field: series, type: 'nominal' } } }
     case 'bubble':
-      return { ...base, mark: 'point', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, size: { field: size, type: 'quantitative' }, color: { field: series, type: 'nominal' } } }
+      return { ...base, mark: 'point', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, size: { field: size, type: 'quantitative' }, color: { field: series, type: 'nominal' } } }
     case 'area':
       return { ...base, mark: 'area', encoding: { x: { field: cat, type: 'ordinal' }, y: { field: val, type: 'quantitative' } } }
     case 'area_stacked':
@@ -251,21 +273,21 @@ export function buildTemplateSpec (columns, templateId = 'bar') {
         }
       }
     case 'facet_row':
-      return { ...base, mark: 'point', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' } }, facet: { row: { field: facet, type: 'nominal' } } }
+      return { ...base, mark: 'point', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' } }, facet: { row: { field: facet, type: 'nominal' } } }
     case 'facet_col':
-      return { ...base, mark: 'point', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' } }, facet: { column: { field: facet, type: 'nominal' } } }
+      return { ...base, mark: 'point', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' } }, facet: { column: { field: facet, type: 'nominal' } } }
     case 'facet_grid':
-      return { ...base, mark: 'point', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' } }, facet: { row: { field: facet, type: 'nominal' }, column: { field: series, type: 'nominal' } } }
+      return { ...base, mark: 'point', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' } }, facet: { row: { field: facet, type: 'nominal' }, column: { field: series, type: 'nominal' } } }
     case 'rule':
-      return { ...base, mark: 'rule', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' } } }
+      return { ...base, mark: 'rule', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' } } }
     case 'trail':
-      return { ...base, mark: 'trail', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, size: { value: 2 } } }
+      return { ...base, mark: 'trail', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, size: { value: 2 } } }
     case 'text':
       return { ...base, mark: 'text', encoding: { x: { field: cat, type: 'ordinal' }, y: { field: val, type: 'quantitative' }, text: { field: val, type: 'quantitative' } } }
     case 'trail_line':
-      return { ...base, mark: { type: 'line', point: true }, encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, order: { field: cat, type: 'quantitative' } } }
+      return { ...base, mark: { type: 'line', point: true }, encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, order: { field: start, type: 'quantitative' } } }
     case 'point':
-      return { ...base, mark: 'point', encoding: { x: { field: cat, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, color: { field: series, type: 'nominal' } } }
+      return { ...base, mark: 'point', encoding: { x: { field: start, type: 'quantitative' }, y: { field: val, type: 'quantitative' }, color: { field: series, type: 'nominal' } } }
     default:
       return { ...base, mark: 'bar', encoding: { x: { field: cat, type: 'nominal' }, y: { field: val, type: 'quantitative' } } }
   }
