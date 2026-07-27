@@ -112,7 +112,8 @@ function normalizePlan (plan) {
         y: Math.round(Number(it.y) || 0),
         w: Math.max(24, Math.round(Number(it.w) || 120)),
         h: Math.max(24, Math.round(Number(it.h) || 80)),
-        prompt: String(it.prompt || it.label || '').trim()
+        prompt: String(it.prompt || it.label || '').trim(),
+        displayTitle: String(it.displayTitle || '').trim()
       }
     })
     .filter((it) => it.prompt)
@@ -124,13 +125,151 @@ function normalizePlan (plan) {
     return raster <= MAX_ICONS
   }).slice(0, MAX_ITEMS)
 
-  return {
+  return composeWorkflowLayout({
     title: String(plan.title || 'Composition'),
     format: String(plan.format || 'figure'),
     canvas: { width, height },
     summary: String(plan.summary || ''),
     items
+  })
+}
+
+/**
+ * Force a clean multi-step graphical abstract / poster grid.
+ * Fixes AI plans that dump overlapping frames, truncated labels, and bad coordinates.
+ */
+export function composeWorkflowLayout (plan) {
+  const icons = plan.items.filter((it) => it.kind === 'icon' || it.kind === 'image')
+  if (icons.length < 2) return plan
+
+  const n = Math.min(5, icons.length)
+  const picked = icons.slice(0, n)
+  const W = plan.canvas.width
+  const H = plan.canvas.height
+  const title = (plan.title || 'Graphical abstract').trim()
+  const margin = Math.round(W * 0.03)
+  const headerH = Math.min(100, Math.max(72, Math.round(H * 0.14)))
+  const gap = Math.max(16, Math.round(W * 0.018))
+  const contentTop = headerH + 20
+  const contentBottom = 22
+  const contentH = H - contentTop - contentBottom
+  const colW = Math.floor((W - margin * 2 - gap * (n - 1)) / n)
+  const iconSize = Math.min(colW - 36, Math.round(contentH * 0.46), 260)
+
+  /** @type {typeof plan.items} */
+  const items = []
+
+  items.push({
+    id: 'layout_bg',
+    kind: 'svg',
+    role: 'background',
+    x: 0,
+    y: 0,
+    w: W,
+    h: H,
+    prompt: title,
+    displayTitle: title
+  })
+
+  for (let i = 0; i < n; i++) {
+    const x = margin + i * (colW + gap)
+    const stepTitle = shortStepLabel(picked[i].prompt, i)
+    items.push({
+      id: `panel_${i + 1}`,
+      kind: 'svg',
+      role: 'panel',
+      x,
+      y: contentTop,
+      w: colW,
+      h: contentH,
+      prompt: stepTitle,
+      displayTitle: `Step ${i + 1}. ${stepTitle}`
+    })
   }
+
+  for (let i = 0; i < n; i++) {
+    const x = margin + i * (colW + gap)
+    const ix = x + Math.round((colW - iconSize) / 2)
+    const iy = contentTop + 52
+    items.push({
+      id: picked[i].id || `icon_${i + 1}`,
+      kind: picked[i].kind === 'image' ? 'image' : 'icon',
+      role: 'icon',
+      x: ix,
+      y: iy,
+      w: iconSize,
+      h: iconSize,
+      prompt: picked[i].prompt
+    })
+  }
+
+  for (let i = 0; i < n - 1; i++) {
+    const x = margin + i * (colW + gap) + colW - Math.round(gap * 0.15)
+    const ay = contentTop + 52 + Math.round(iconSize / 2) - 14
+    items.push({
+      id: `arrow_${i + 1}`,
+      kind: 'svg',
+      role: 'arrow',
+      x,
+      y: ay,
+      w: gap + Math.round(gap * 0.3),
+      h: 28,
+      prompt: 'flow',
+      displayTitle: ''
+    })
+  }
+
+  for (let i = 0; i < n; i++) {
+    const x = margin + i * (colW + gap)
+    const stepTitle = shortStepLabel(picked[i].prompt, i)
+    const detail = shortStepDetail(picked[i].prompt)
+    const cy = contentTop + 52 + iconSize + 18
+    items.push({
+      id: `caption_${i + 1}`,
+      kind: 'svg',
+      role: 'caption',
+      x: x + 14,
+      y: cy,
+      w: colW - 28,
+      h: Math.max(60, contentTop + contentH - cy - 12),
+      prompt: `${stepTitle}. ${detail}`,
+      displayTitle: stepTitle,
+      lines: [stepTitle, detail].filter(Boolean)
+    })
+  }
+
+  return {
+    ...plan,
+    title,
+    items,
+    summary: plan.summary || `${n}-step composed layout for “${title}”.`,
+    _composed: true
+  }
+}
+
+function shortStepLabel (prompt, index) {
+  const p = String(prompt || '')
+  const named = p.match(/(?:of|showing|icon of|depicting)\s+([^:.,\n]{4,48})/i)
+  if (named?.[1]) return cleanLabel(named[1])
+  const before = p.split(/[:.—–-]/)[0]
+  if (before && before.length > 3 && before.length < 42) return cleanLabel(before)
+  return `Step ${index + 1}`
+}
+
+function shortStepDetail (prompt) {
+  const p = String(prompt || '').replace(/\s+/g, ' ').trim()
+  const chem = p.match(/\b([A-Z][a-z]?(?:\d+)?(?:[A-Z][a-z]?(?:\d+)?)*(?:\s*\+\s*[A-Za-z0-9()]+)?)\b/)
+  if (chem?.[1] && chem[1].length < 40) return chem[1]
+  const clause = p.split(/[.;]/)[0]
+  return cleanLabel(clause).slice(0, 56)
+}
+
+function cleanLabel (s) {
+  return String(s || '')
+    .replace(/^(BioRender|scientific|vector|icon|style|of|a|an)\s+/ig, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase())
 }
 
 /**
@@ -150,7 +289,9 @@ export function formatPlanForChat (plan) {
     const tag = it.kind === 'icon' ? 'icon' : it.kind === 'image' ? 'image' : 'svg'
     lines.push(`${i + 1}. [${tag}] ${it.id} @ (${it.x},${it.y}) ${it.w}×${it.h} — ${it.prompt.slice(0, 100)}`)
   })
-  lines.push('', 'Build order: SVG layout → text/frames → icons → images')
+  lines.push('', plan._composed
+    ? 'Composed into a clean step grid. Build: panels → icons → arrows → captions.'
+    : 'Build order: SVG layout → text/frames → icons → images')
   return lines.filter(Boolean).join('\n')
 }
 
@@ -330,41 +471,41 @@ Return ONLY the SVG markup.`
 /**
  * Deterministic layout SVG for frames / headers / arrows / labels (no AI needed).
  */
-export function buildStructuralSvgFallback (item) {
-  const { w, h, role, prompt, id } = item
+export function buildStructuralSvgFallback (item, planTitle = '') {
+  const { w, h, role, prompt, id, lines } = item
   const roleL = String(role || '').toLowerCase()
   const idL = String(id || '').toLowerCase()
   const uid = `m${String(id || 'x').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
-  const title = extractShortTitle(prompt, id)
+  const rawTitle = item.displayTitle || planTitle || extractShortTitle(prompt, id)
+  const title = looksLikeIdLabel(rawTitle) ? (planTitle || 'Overview') : rawTitle
 
-  // Full-canvas or large background + header bar
+  // Full-canvas background + header bar
   if (roleL.includes('background') || idL.includes('bg') || idL.includes('layout')) {
     const headerH = Math.min(120, Math.max(72, Math.round(h * 0.14)))
+    const main = planTitle || title
+    const fs = Math.min(26, Math.max(16, Math.round(w / 48)))
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="#f5f7fa"/>
+  <rect width="${w}" height="${h}" fill="#eef2f6"/>
   <rect width="${w}" height="${headerH}" fill="#0f2744"/>
-  <text x="40" y="${Math.round(headerH * 0.58)}" fill="#ffffff" font-family="sans-serif" font-size="${Math.min(28, Math.max(18, Math.round(w / 42)))}" font-weight="700">${escapeXml(title)}</text>
+  <text x="40" y="${Math.round(headerH * 0.62)}" fill="#ffffff" font-family="sans-serif" font-size="${fs}" font-weight="700">${escapeXml(String(main).slice(0, 68))}</text>
 </svg>`
   }
 
   // Title / header text banner
   if (roleL.includes('title') || roleL.includes('header') || idL.includes('header') || idL.includes('title')) {
-    const fs = Math.min(32, Math.max(16, Math.round(Math.min(w, h) / 12)))
+    const fs = Math.min(28, Math.max(14, Math.round(Math.min(w, h) / 10)))
+    const main = planTitle || title
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="none"/>
-  <text x="0" y="${Math.round(h * 0.55)}" fill="#ffffff" font-family="sans-serif" font-size="${fs}" font-weight="700">${escapeXml(title)}</text>
-  <text x="0" y="${Math.round(h * 0.85)}" fill="#c5d4e8" font-family="sans-serif" font-size="${Math.max(11, Math.round(fs * 0.45))}">Research poster</text>
+  <text x="0" y="${Math.round(h * 0.62)}" fill="#ffffff" font-family="sans-serif" font-size="${fs}" font-weight="700">${escapeXml(String(main).slice(0, 68))}</text>
 </svg>`
   }
 
-  // Single panel / card frame
+  // Single panel / card frame — no junk id labels
   if (roleL.includes('frame') || idL.includes('frame') || roleL.includes('panel') || idL.includes('panel')) {
-    const heading = title.length > 40 ? title.slice(0, 40) + '…' : title
+    const heading = String(item.displayTitle || '').trim()
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
-  <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
-  <rect x="1" y="1" width="${w - 2}" height="44" rx="14" fill="#f8fafc" stroke="none"/>
-  <rect x="1" y="30" width="${w - 2}" height="16" fill="#f8fafc"/>
-  <text x="18" y="30" fill="#0f2744" font-family="sans-serif" font-size="15" font-weight="700">${escapeXml(heading)}</text>
+  <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="16" fill="#ffffff" stroke="#d8dee6" stroke-width="1.5"/>
+  ${heading ? `<text x="18" y="32" fill="#0f2744" font-family="sans-serif" font-size="14" font-weight="700">${escapeXml(heading.slice(0, 42))}</text>` : ''}
 </svg>`
   }
 
@@ -382,25 +523,19 @@ export function buildStructuralSvgFallback (item) {
 
   if (roleL.includes('caption') || roleL.includes('label') || roleL.includes('annotation') ||
       idL.includes('caption') || idL.includes('label') || idL.includes('annotation')) {
-    const bullets = String(prompt || '')
-      .split(/(?:•|\n|;|\|\s*|Step\s*\d[:.)]\s*)/i)
-      .map((s) => s.replace(/^[^A-Za-z0-9]+/, '').trim())
-      .filter((s) => s.length > 3)
-      .slice(0, 9)
-    const colCount = Math.min(3, Math.max(1, Math.round(bullets.length / 3) || 1))
-    const perCol = Math.ceil(bullets.length / colCount) || 1
-    const colW = w / colCount
+    const rows = Array.isArray(lines) && lines.length
+      ? lines.map((l) => String(l).trim()).filter(Boolean).slice(0, 5)
+      : [title]
     let texts = ''
-    bullets.forEach((line, i) => {
-      const col = Math.floor(i / perCol)
-      const row = i % perCol
-      const x = Math.round(col * colW + 16)
-      const y = 36 + row * 22
-      texts += `<text x="${x}" y="${y}" fill="#334155" font-family="sans-serif" font-size="12">• ${escapeXml(line.slice(0, 52))}</text>\n`
+    rows.forEach((line, i) => {
+      const weight = i === 0 ? '700' : '400'
+      const size = i === 0 ? 13 : 12
+      const fill = i === 0 ? '#0f2744' : '#475569'
+      const clipped = String(line).length > Math.floor(w / 7)
+        ? `${String(line).slice(0, Math.max(4, Math.floor(w / 7) - 1))}…`
+        : String(line)
+      texts += `<text x="0" y="${18 + i * 20}" fill="${fill}" font-family="sans-serif" font-size="${size}" font-weight="${weight}">${escapeXml(clipped)}</text>\n`
     })
-    if (!texts) {
-      texts = `<text x="16" y="28" fill="#334155" font-family="sans-serif" font-size="13">${escapeXml(title)}</text>`
-    }
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">${texts}</svg>`
   }
 
@@ -421,8 +556,15 @@ export function buildStructuralSvgFallback (item) {
 
   return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
   <rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
-  <text x="16" y="28" fill="#334155" font-family="sans-serif" font-size="14">${escapeXml(title)}</text>
 </svg>`
+}
+
+function looksLikeIdLabel (s) {
+  const t = String(s || '').trim().toLowerCase()
+  if (!t) return true
+  if (t === 'bg' || t === 'flow' || t.includes('_')) return true
+  if (/^(panels?|layout|header|caption|label|arrow|frame|annotation)\b/.test(t) && t.length < 24) return true
+  return false
 }
 
 function extractShortTitle (prompt, id) {
@@ -433,7 +575,7 @@ function extractShortTitle (prompt, id) {
   const quoted = String(prompt || '').match(/['"]([^'"]{8,72})['"]/)
   if (quoted?.[1]) return quoted[1].trim()
   const first = String(prompt || '').split(/[.•\n]/)[0].trim()
-  if (first.length > 8 && first.length < 80) return first
+  if (first.length > 8 && first.length < 80 && !looksLikeIdLabel(first)) return first
   return String(id || 'Panel').replace(/_/g, ' ')
 }
 
@@ -463,33 +605,31 @@ export function isLayoutStructuralItem (item) {
 }
 
 /**
- * Build order: layout SVG → other SVG → icons → images
+ * Build order: background → panels → icons → arrows → captions (text on top)
  */
 export function sortMaxBuildOrder (items) {
   const phase = (it) => {
     const kind = String(it.kind || 'svg').toLowerCase()
-    if (kind === 'svg' && isLayoutStructuralItem(it)) {
-      // background first, then frames, then text/labels/arrows
-      const idL = `${it.id} ${it.role}`.toLowerCase()
-      if (idL.includes('bg') || idL.includes('layout') || idL.includes('background')) return 0
-      if (idL.includes('frame') || idL.includes('panel') || idL.includes('card')) return 1
-      if (idL.includes('header') || idL.includes('title')) return 2
-      if (idL.includes('label') || idL.includes('caption') || idL.includes('annotation') || idL.includes('arrow')) return 3
-      return 4
-    }
-    if (kind === 'svg') return 5 // generative SVG icons / diagrams
-    if (kind === 'icon') return 6
-    if (kind === 'image') return 7
-    return 8
+    const idL = `${it.id} ${it.role}`.toLowerCase()
+    if (kind === 'svg' && (idL.includes('bg') || idL.includes('layout') || idL.includes('background'))) return 0
+    if (kind === 'svg' && (idL.includes('frame') || idL.includes('panel') || idL.includes('card'))) return 1
+    if (kind === 'svg' && (idL.includes('header') || idL.includes('title'))) return 2
+    if (kind === 'svg' && isLayoutStructuralItem(it) && !idL.includes('arrow') && !idL.includes('caption') && !idL.includes('label') && !idL.includes('annotation')) return 3
+    if (kind === 'svg' && !isLayoutStructuralItem(it)) return 4
+    if (kind === 'icon') return 5
+    if (kind === 'image') return 6
+    if (kind === 'svg' && idL.includes('arrow')) return 7
+    if (kind === 'svg' && (idL.includes('caption') || idL.includes('label') || idL.includes('annotation'))) return 8
+    return 9
   }
   return [...items].sort((a, b) => phase(a) - phase(b))
 }
 
-async function generateSvgPiece (apiKey, textModel, item, signal) {
+async function generateSvgPiece (apiKey, textModel, item, signal, planTitle = '') {
   // Poster chrome: always local — reliable and instant
   if (isLayoutStructuralItem(item)) {
     return {
-      svg: buildStructuralSvgFallback(item),
+      svg: buildStructuralSvgFallback(item, planTitle),
       source: 'layout'
     }
   }
@@ -530,7 +670,7 @@ Keep it simple and complete. Flat scientific illustration style.`
   }
 
   return {
-    svg: buildStructuralSvgFallback(item),
+    svg: buildStructuralSvgFallback(item, planTitle),
     source: 'fallback',
     warning: lastErr
   }
@@ -652,7 +792,7 @@ export async function runMaxMode (ctx) {
         paint(svgEditor)
         await delay(120, signal)
       } else {
-        const gen = await generateSvgPiece(apiKey, textModel, item, signal)
+        const gen = await generateSvgPiece(apiKey, textModel, item, signal, plan.title)
         if (gen.warning) {
           warnings.push(`${item.id}: used layout fallback (${gen.warning})`)
         }
