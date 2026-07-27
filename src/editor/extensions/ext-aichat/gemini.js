@@ -89,20 +89,27 @@ export function resolveImageModel (modelId) {
   return DEFAULT_IMAGE_MODEL
 }
 
-async function postGemini ({ apiKey, model, contents, systemInstruction, generationConfig, signal }) {
+async function postGemini ({ apiKey, model, contents, systemInstruction, generationConfig, signal, tools, toolConfig }) {
+  // Default chat path never sends tools. Only include when caller explicitly opts in.
+  const payload = {
+    apiKey,
+    model,
+    contents,
+    systemInstruction: systemInstruction
+      ? { parts: [{ text: systemInstruction }] }
+      : undefined,
+    generationConfig
+  }
+  if (Array.isArray(tools) && tools.length) {
+    payload.tools = tools
+    if (toolConfig) payload.toolConfig = toolConfig
+  }
+
   const res = await fetch('/api/gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal,
-    body: JSON.stringify({
-      apiKey,
-      model,
-      contents,
-      systemInstruction: systemInstruction
-        ? { parts: [{ text: systemInstruction }] }
-        : undefined,
-      generationConfig
-    })
+    body: JSON.stringify(payload)
   })
 
   let data
@@ -145,7 +152,8 @@ export async function generateGeminiText ({
     signal,
     generationConfig: generationConfig || {
       temperature: 0.45,
-      maxOutputTokens: 8192
+      // Complex drawings (e.g. liposome) need more room; 8k often truncates mid-fence
+      maxOutputTokens: 16384
     }
   })
 
@@ -265,6 +273,17 @@ export function extractSvgFromText (text) {
   const raw = text.match(/<svg\b[\s\S]*?<\/svg>/i)
   if (raw) return raw[0].trim()
 
+  // Truncated fence: ```svg ... <svg ... (no closing ``` / </svg>)
+  const fenceOpen = text.match(/```(?:svg|xml)?\s*([\s\S]*)$/i)
+  if (fenceOpen?.[1] && /<svg\b/i.test(fenceOpen[1])) {
+    let frag = fenceOpen[1]
+      .replace(/```[\s\S]*$/m, '')
+      .trim()
+    frag = frag.replace(/<[^>]*$/m, '')
+    if (!/<\/svg>\s*$/i.test(frag)) frag += '</svg>'
+    if (/<svg\b/i.test(frag) && frag.length > 40) return frag
+  }
+
   // Truncated response: open <svg> without </svg>
   const open = text.match(/<svg\b[\s\S]*$/i)
   if (open) {
@@ -277,6 +296,28 @@ export function extractSvgFromText (text) {
     if (/<svg\b/i.test(frag) && frag.length > 40) return frag
   }
   return null
+}
+
+/**
+ * Extra diagnostics when SVG extract / apply fails.
+ * @param {string} reply
+ * @param {string|null} svg
+ */
+export function diagnoseReplyForSvg (reply, svg) {
+  const text = String(reply || '')
+  return {
+    replyLength: text.length,
+    hasSvgOpen: /<svg\b/i.test(text),
+    hasSvgClose: /<\/svg>/i.test(text),
+    hasFenceOpen: /```(?:svg|xml)?/i.test(text),
+    hasFenceClose: /```(?:svg|xml)?[\s\S]*```/i.test(text),
+    extractedLength: svg ? svg.length : 0,
+    extractNote: svg
+      ? (/<\/svg>\s*$/i.test(svg) ? 'extracted (may be salvaged)' : 'extracted without close tag')
+      : 'no SVG fragment extracted from reply',
+    previewHead: text.slice(0, 280),
+    previewTail: text.slice(-280)
+  }
 }
 
 /**

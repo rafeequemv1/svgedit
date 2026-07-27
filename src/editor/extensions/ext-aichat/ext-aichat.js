@@ -14,10 +14,11 @@ import {
   generateGeminiText,
   generateGeminiImage,
   extractSvgFromText,
+  diagnoseReplyForSvg,
   compareGeminiModels,
   listGeminiModels
 } from './gemini.js'
-import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory } from './apply-svg.js'
+import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, buildContinuityNote, looksLikeEditIntent, summarizeSelectionSvg } from './apply-svg.js'
 import {
   applySvgToCanvasAnimated,
   replaceSelectionWithSvg,
@@ -75,6 +76,9 @@ export default {
     let activeAbort = null
     /** @type {Array<{id:string, at:number, prompt:string, mode:string, svg?:string, note:string}>} */
     let actionHistory = []
+    /** @type {Element[]} */
+    let tipElems = []
+    let tipRaf = 0
 
     const STEPS = [
       'Understanding request',
@@ -111,6 +115,122 @@ export default {
       const stopBtn = $id('ai_chat_stop')
       if (sendBtn) sendBtn.disabled = on
       if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none'
+    }
+
+    const ensureAskTip = () => {
+      let tip = $id('ai_ask_edit_tip')
+      if (tip) return tip
+      const workarea = $id('workarea')
+      if (!workarea) return null
+      tip = document.createElement('button')
+      tip.type = 'button'
+      tip.id = 'ai_ask_edit_tip'
+      tip.className = 'ai-ask-edit-tip'
+      tip.hidden = true
+      tip.textContent = t(svgEditor, 'askAiEdit')
+      tip.title = t(svgEditor, 'askAiEditTitle')
+      tip.addEventListener('mousedown', (e) => {
+        // Keep selection; don't let canvas steal the click
+        e.preventDefault()
+        e.stopPropagation()
+      })
+      tip.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        openAskAiEdit()
+      })
+      workarea.appendChild(tip)
+      workarea.addEventListener('scroll', () => scheduleAskTipReposition(), { passive: true })
+      return tip
+    }
+
+    const hideAskTip = () => {
+      const tip = $id('ai_ask_edit_tip')
+      if (tip) tip.hidden = true
+      tipElems = []
+    }
+
+    const selectionScreenRect = (elems) => {
+      let minL = Infinity
+      let minT = Infinity
+      let maxR = -Infinity
+      let maxB = -Infinity
+      let any = false
+      for (const el of (elems || []).filter(Boolean)) {
+        try {
+          const r = el.getBoundingClientRect?.()
+          if (!r || (!r.width && !r.height)) continue
+          any = true
+          minL = Math.min(minL, r.left)
+          minT = Math.min(minT, r.top)
+          maxR = Math.max(maxR, r.right)
+          maxB = Math.max(maxB, r.bottom)
+        } catch (_) { /* ignore */ }
+      }
+      if (!any) return null
+      return { left: minL, top: minT, right: maxR, bottom: maxB, width: maxR - minL, height: maxB - minT }
+    }
+
+    const repositionAskTip = () => {
+      const tip = ensureAskTip()
+      const workarea = $id('workarea')
+      if (!tip || !workarea) return
+      const elems = tipElems.length
+        ? tipElems
+        : (svgCanvas.getSelectedElements?.() || []).filter(Boolean)
+      if (!elems.length) {
+        tip.hidden = true
+        return
+      }
+      const screen = selectionScreenRect(elems)
+      if (!screen) {
+        tip.hidden = true
+        return
+      }
+      const work = workarea.getBoundingClientRect()
+      const x = screen.left - work.left + workarea.scrollLeft + screen.width / 2
+      const y = screen.top - work.top + workarea.scrollTop - 10
+      tip.hidden = false
+      tip.style.left = `${Math.round(x)}px`
+      tip.style.top = `${Math.max(4, Math.round(y))}px`
+    }
+
+    const scheduleAskTipReposition = () => {
+      if (tipRaf) cancelAnimationFrame(tipRaf)
+      tipRaf = requestAnimationFrame(() => {
+        tipRaf = 0
+        repositionAskTip()
+      })
+    }
+
+    const updateAskTip = (elems) => {
+      tipElems = (elems || []).filter(Boolean)
+      if (!tipElems.length) {
+        hideAskTip()
+        return
+      }
+      // Skip while drawing tools are active if no real selection chrome needed
+      scheduleAskTipReposition()
+    }
+
+    const openAskAiEdit = () => {
+      const editCb = $id('ai_edit_selection')
+      if (editCb) editCb.checked = true
+      const task = $id('ai_task_mode')
+      if (task && task.value !== 'draw') {
+        task.value = 'draw'
+        syncTaskModeUi()
+      }
+      setOpen(true)
+      const input = $id('ai_chat_input')
+      if (input) {
+        if (!input.value.trim()) {
+          input.placeholder = t(svgEditor, 'placeholderEditSelection')
+        }
+        input.focus()
+      }
+      setStatus(t(svgEditor, 'askAiEditReady'))
+      scheduleAskTipReposition()
     }
 
     const stopGeneration = () => {
@@ -315,6 +435,54 @@ export default {
       return row
     }
 
+    const attachFailureDetails = (rowOrNull, message, details) => {
+      const log = $id('ai_chat_log')
+      const row = rowOrNull || (() => {
+        if (!log) return null
+        const r = document.createElement('div')
+        r.className = 'ai-msg ai-msg-model ai-msg-error'
+        log.appendChild(r)
+        return r
+      })()
+      if (!row) return
+
+      const summary = document.createElement('div')
+      summary.className = 'ai-msg-error-summary'
+      summary.textContent = message || t(svgEditor, 'emptySvg')
+      row.appendChild(summary)
+
+      const detailsText = formatApplyFailureDetails(details, message)
+      const toggle = document.createElement('button')
+      toggle.type = 'button'
+      toggle.className = 'ai-details-toggle'
+      toggle.textContent = t(svgEditor, 'moreDetails')
+      const pre = document.createElement('pre')
+      pre.className = 'ai-failure-details'
+      pre.hidden = true
+      pre.textContent = detailsText
+      toggle.addEventListener('click', () => {
+        const open = pre.hidden
+        pre.hidden = !open
+        toggle.textContent = open
+          ? t(svgEditor, 'hideDetails')
+          : t(svgEditor, 'moreDetails')
+        if (log) log.scrollTop = log.scrollHeight
+      })
+      row.appendChild(toggle)
+      row.appendChild(pre)
+      if (log) log.scrollTop = log.scrollHeight
+    }
+
+    const showApplyFailure = (message, details, opts = {}) => {
+      const msg = message || t(svgEditor, 'emptySvg')
+      setStatus(msg, true)
+      if (opts.row) {
+        attachFailureDetails(opts.row, msg, details)
+      } else {
+        attachFailureDetails(null, msg, details)
+      }
+    }
+
     const renderPendingImages = () => {
       const strip = $id('ai_attach_strip')
       if (!strip) return
@@ -400,8 +568,16 @@ export default {
         // Fallback to instant apply if progressive parse failed
         const fallback = applySvgToCanvas(svgEditor, svg, mode)
         if (!fallback.ok) {
-          setStatus(result.message || fallback.message || t(svgEditor, 'emptySvg'), true)
-          return false
+          const message = fallback.message || result.message || t(svgEditor, 'emptySvg')
+          const details = {
+            stage: 'apply',
+            ...(result.details || {}),
+            ...(fallback.details || {}),
+            animatedMessage: result.message,
+            fallbackMessage: fallback.message
+          }
+          setStatus(message, true)
+          return { ok: false, message, details }
         }
       }
       setStatus(editSelection
@@ -409,7 +585,7 @@ export default {
         : (mode === 'replace'
           ? t(svgEditor, 'appliedReplace')
           : t(svgEditor, 'appliedAppend')))
-      return true
+      return { ok: true }
     }
 
     const renderCompareResults = (results, mode) => {
@@ -448,8 +624,8 @@ export default {
             setBusyUi(true)
             setSteps(3)
             try {
-              const ok = await applyOne(svg, mode)
-              if (ok) {
+              const applied = await applyOne(svg, mode)
+              if (applied.ok) {
                 pushActionHistory({
                   prompt: 'Compare apply',
                   mode,
@@ -457,6 +633,8 @@ export default {
                   note: `Applied ${r.label}`
                 })
                 setSteps(4)
+              } else {
+                showApplyFailure(applied.message, applied.details)
               }
             } finally {
               setBusyUi(false)
@@ -477,7 +655,8 @@ export default {
       if (compareMode) {
         return [{ role: 'user', parts: currentParts }]
       }
-      const recent = history.slice(-16)
+      // Keep a longer window for continuity; SVG bodies are already compacted
+      const recent = history.slice(-24)
       const contents = recent.map((m) => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: m.parts || [{ text: m.text }]
@@ -503,8 +682,18 @@ export default {
       const mode = $id('ai_draw_mode')?.value || 'append'
       const includeCanvas = !!$id('ai_include_canvas')?.checked
       const compareOn = !isRaster && !isMax && !!$id('ai_compare_on')?.checked
-      const editSelection = !isRaster && !isMax && !!$id('ai_edit_selection')?.checked
-      const selectionSvg = editSelection ? serializeSelection(svgCanvas) : ''
+      let editSelection = !isRaster && !isMax && !!$id('ai_edit_selection')?.checked
+      const liveSelectionSvg = (!isRaster && !isMax) ? serializeSelection(svgCanvas) : ''
+      // Auto-enable selection edit for short follow-ups when something is selected
+      if (!editSelection && liveSelectionSvg && looksLikeEditIntent(prompt)) {
+        editSelection = true
+        const editCb = $id('ai_edit_selection')
+        if (editCb) editCb.checked = true
+      }
+      const selectionSvg = editSelection ? liveSelectionSvg : ''
+      const selectionSummary = (!editSelection && liveSelectionSvg)
+        ? summarizeSelectionSvg(liveSelectionSvg)
+        : ''
       const imagesSnapshot = pendingImages.map((p) => ({
         mimeType: p.mimeType,
         data: p.data,
@@ -687,7 +876,11 @@ export default {
           includeCanvas: editSelection ? false : includeCanvas,
           canvasSvg: (!editSelection && includeCanvas) ? svgCanvas.getSvgString() : '',
           hasImages: imagesSnapshot.length > 0,
-          selectionSvg: selectionSvg || undefined
+          selectionSvg: selectionSvg || undefined,
+          selectionSummary: selectionSummary || undefined,
+          continuityNote: compareOn
+            ? ''
+            : buildContinuityNote(history, actionHistory[0] || null)
         })
         const contents = compareOn
           ? [{ role: 'user', parts: userParts }]
@@ -732,6 +925,7 @@ export default {
 
         const svg = extractSvgFromText(reply)
         const talk = conversationalTextFromReply(reply, svg)
+        const replyDiag = diagnoseReplyForSvg(reply, svg)
 
         if (svg) {
           setSteps(3)
@@ -739,23 +933,27 @@ export default {
           if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
           history.push({
             role: 'model',
-            text: compactModelHistory(reply, svg, applied),
-            parts: [{ text: compactModelHistory(reply, svg, applied) }]
+            text: compactModelHistory(reply, svg, applied.ok),
+            parts: [{ text: compactModelHistory(reply, svg, applied.ok) }]
           })
-          appendMsg('model', talk || (applied
+          const row = appendMsg('model', talk || (applied.ok
             ? (editSelection ? '✓ Updated selection.' : '✓ Drawn on the canvas.')
             : 'SVG returned but could not apply.'))
           pushActionHistory({
             prompt: displayText,
             mode: editSelection ? 'edit-selection' : effectiveMode,
-            svg: applied ? svg : undefined,
-            note: applied
+            svg: applied.ok ? svg : undefined,
+            note: applied.ok
               ? (editSelection ? 'Edited selection' : 'Drawn on canvas')
               : 'Apply failed'
           })
           setSteps(4)
-          if (!applied) {
-            setStatus(t(svgEditor, 'emptySvg'), true)
+          if (!applied.ok) {
+            showApplyFailure(applied.message || t(svgEditor, 'emptySvg'), {
+              ...replyDiag,
+              ...(applied.details || {}),
+              stage: 'apply-after-extract'
+            }, { row })
           }
           return
         }
@@ -765,14 +963,29 @@ export default {
           text: reply.slice(0, 8000),
           parts: [{ text: reply.slice(0, 8000) }]
         })
-        appendMsg('model', talk || reply.slice(0, 2000))
-        pushActionHistory({
-          prompt: displayText,
-          mode: 'chat',
-          note: 'Reply only (no SVG)'
-        })
+        const noSvgRow = appendMsg('model', talk || reply.slice(0, 2000))
+        // Reply looked like it tried to draw but extract failed
+        if (replyDiag.hasSvgOpen || /```\s*svg/i.test(reply)) {
+          showApplyFailure(t(svgEditor, 'emptySvg'), {
+            ...replyDiag,
+            stage: 'extract',
+            messageHint: 'Model reply contained SVG markers but no usable fragment was extracted (often truncated output).'
+          }, { row: noSvgRow })
+          pushActionHistory({
+            prompt: displayText,
+            mode: effectiveMode,
+            note: 'Extract failed'
+          })
+        } else {
+          pushActionHistory({
+            prompt: displayText,
+            mode: 'chat',
+            note: 'Reply only (no SVG)'
+          })
+          setStatus(t(svgEditor, 'chatOk'))
+        }
         setSteps(4)
-        setStatus(t(svgEditor, 'chatOk'))
+        return
       } catch (err) {
         if (err?.name === 'AbortError' || signal.aborted) {
           appendMsg('model', t(svgEditor, 'stopped'))
@@ -1073,6 +1286,18 @@ export default {
         })
 
         if (localStorage.getItem(LS_OPEN) === '1') setOpen(true)
+        ensureAskTip()
+      },
+      selectedChanged (opts) {
+        updateAskTip(opts?.elems)
+      },
+      elementChanged () {
+        if (tipElems.length || (svgCanvas.getSelectedElements?.() || []).some(Boolean)) {
+          scheduleAskTipReposition()
+        }
+      },
+      zoomChanged () {
+        scheduleAskTipReposition()
       }
     }
   }

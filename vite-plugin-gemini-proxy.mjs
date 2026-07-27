@@ -70,7 +70,10 @@ async function generateHandler (req, res) {
         generationConfig: body.generationConfig || {
           temperature: 0.4,
           maxOutputTokens: 8192
-        }
+        },
+        ...(Array.isArray(body.tools) && body.tools.length
+          ? { tools: body.tools, toolConfig: body.toolConfig }
+          : {})
       })
     })
 

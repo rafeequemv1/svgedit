@@ -1,3 +1,5 @@
+import { diagnoseAndSanitizeSvg } from './apply-svg.js'
+
 /**
  * Progressive SVG reveal on canvas (client-side only — no extra AI cost).
  */
@@ -21,10 +23,9 @@ const delay = (ms, signal) => new Promise((resolve, reject) => {
  * @returns {{ svg: Element, defs: Element[], kids: Element[] }|null}
  */
 export function parseSvgDocument (svgXml) {
-  let xml = svgXml
-  if (!/\sxmlns=/.test(xml)) {
-    xml = xml.replace(/<svg\b/i, `<svg xmlns="${NS_SVG}"`)
-  }
+  const diagnosed = diagnoseAndSanitizeSvg(svgXml)
+  if (!diagnosed.ok) return null
+  let xml = diagnosed.xml
   const doc = new DOMParser().parseFromString(xml, 'image/svg+xml')
   if (doc.querySelector('parsererror')) return null
   const svg = doc.documentElement
@@ -36,7 +37,7 @@ export function parseSvgDocument (svgXml) {
     if (tag === 'defs') defs.push(child)
     else if (child.nodeType === 1) kids.push(child)
   }
-  return { svg, defs, kids }
+  return { svg, defs, kids, details: diagnosed.details }
 }
 
 /**
@@ -47,7 +48,10 @@ export async function applySvgToCanvasAnimated (svgEditor, svgXml, mode, opts = 
   const { onProgress, signal, stepMs = 36 } = opts
   const { svgCanvas } = svgEditor
   const parsed = parseSvgDocument(svgXml)
-  if (!parsed) return { ok: false, message: 'Invalid SVG' }
+  if (!parsed) {
+    const d = diagnoseAndSanitizeSvg(svgXml)
+    return { ok: false, message: d.message || 'Invalid SVG', details: d.details }
+  }
 
   const { InsertElementCommand, BatchCommand } = svgCanvas.history
   const layer = svgCanvas.getCurrentGroup?.() ||
@@ -142,7 +146,10 @@ export async function replaceSelectionWithSvg (svgEditor, svgXml, opts = {}) {
 
   // Temporarily append progressive group at same parent
   const parsed = parseSvgDocument(svgXml)
-  if (!parsed) return { ok: false, message: 'Invalid SVG' }
+  if (!parsed) {
+    const d = diagnoseAndSanitizeSvg(svgXml)
+    return { ok: false, message: d.message || 'Invalid SVG', details: d.details }
+  }
 
   const g = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'g')
   g.setAttribute('id', svgCanvas.getNextId())

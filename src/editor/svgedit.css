@@ -417,6 +417,7 @@ a {
   border: 1px solid var(--border-color);
   overflow: auto;
   text-align: center;
+  position: relative;
 }
 
 #svgcanvas {
@@ -1101,6 +1102,74 @@ ul li.current {
 
 .ai_chat_status.error {
   color: #f0a0a0;
+}
+
+.ai-msg-error-summary {
+  color: #f0a0a0;
+  font-size: 7.5pt;
+  margin-top: 6px;
+}
+
+.ai-details-toggle {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #8ab4f8;
+  font-size: 7.5pt;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.ai-details-toggle:hover {
+  color: #aecbfa;
+}
+
+.ai-failure-details {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5pt;
+  line-height: 1.35;
+  color: #c8cdd5;
+  background: #1a1d24;
+  border: 1px solid #3d4654;
+  border-radius: 4px;
+}
+
+.ai-ask-edit-tip {
+  position: absolute;
+  z-index: 40;
+  transform: translate(-50%, -100%);
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid #0D99FF;
+  border-radius: 6px;
+  background: #fff;
+  color: #111;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  white-space: nowrap;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.ai-ask-edit-tip:hover {
+  background: #f3f9ff;
+}
+
+.ai-ask-edit-tip:focus-visible {
+  outline: 2px solid #0D99FF;
+  outline-offset: 1px;
 }
 
 .ai_chat_composer {

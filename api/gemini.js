@@ -41,7 +41,11 @@ export default async function handler (req, res) {
         generationConfig: body.generationConfig || {
           temperature: 0.4,
           maxOutputTokens: 8192
-        }
+        },
+        // Only forward tools when the client explicitly opts in (default chat never does)
+        ...(Array.isArray(body.tools) && body.tools.length
+          ? { tools: body.tools, toolConfig: body.toolConfig }
+          : {})
       })
     })
 
