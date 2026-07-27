@@ -24,6 +24,7 @@ import {
   assignAttributes,
   getFeGaussianBlur
 } from './utilities.js'
+import { clearAlignmentGuides } from './align-guides.js'
 import {
   transformPoint,
   matrixMultiply,
@@ -1349,6 +1350,8 @@ const updateCanvas = (w, h) => {
     'transform',
     `translate(${x},${y})`
   )
+
+  clearAlignmentGuides()
 
   /**
    * Invoked upon updates to the canvas.

@@ -56,6 +56,7 @@ export default {
   stopped: 'Stopped. You can start a new request.',
   chatOk: 'Replied (no new drawing).',
   emptySvg: 'Could not apply SVG from the reply. Try again or rephrase.',
+  svgRetry: 'First SVG was incomplete — retrying with a simpler drawing…',
   moreDetails: 'More details',
   hideDetails: 'Hide details',
   askAiEdit: 'Ask AI to edit',

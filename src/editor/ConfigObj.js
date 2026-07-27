@@ -148,7 +148,7 @@ export default class ConfigObj {
       // Change the following to preferences (already in the Editor Options dialog)?
       gridSnapping: false,
       alignGuides: true,
-      alignGuideThreshold: 8,
+      alignGuideThreshold: 10,
       gridColor: '#000',
       baseUnit: 'px',
       snappingStep: 10,

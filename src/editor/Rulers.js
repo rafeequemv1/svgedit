@@ -28,6 +28,23 @@ class Rulers {
     this.rulerX = $id('ruler_x')
     this.rulerY = $id('ruler_y')
     this.rulerCorner = $id('ruler_corner')
+
+    // Keep rulers calibrated when side panels / AI chat change workarea size
+    const workarea = this.editor.workarea || $id('workarea')
+    if (workarea && typeof ResizeObserver !== 'undefined') {
+      let resizeTimer = 0
+      const ro = new ResizeObserver(() => {
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(() => {
+          try {
+            this.editor.updateCanvas?.(false)
+          } catch (_) { /* ignore */ }
+        }, 60)
+      })
+      ro.observe(workarea)
+      const root = document.querySelector('.svg_editor')
+      if (root) ro.observe(root)
+    }
   }
 
   display (on) {

@@ -24,9 +24,39 @@ export const init = (canvas) => {
  * @returns {Element|null}
  */
 const getGuideParent = () => {
-  return svgCanvas?.selectorManager?.selectorParentGroup ||
-    svgCanvas?.getSvgRoot() ||
-    null
+  return svgCanvas?.selectorManager?.selectorParentGroup || null
+}
+
+/**
+ * @returns {{ w: number, h: number }}
+ */
+const getContentSize = () => ({
+  w: svgCanvas?.getContentW?.() || 0,
+  h: svgCanvas?.getContentH?.() || 0
+})
+
+/**
+ * Extend guide segments across the visible content area for clarity.
+ * @param {{x1:number,y1:number,x2:number,y2:number}} g
+ * @param {number} zoom
+ */
+const spanGuideAcrossContent = (g, zoom) => {
+  const cw = getContentSize().w * zoom
+  const ch = getContentSize().h * zoom
+  const z = zoom || 1
+  const x1 = g.x1 * z
+  const y1 = g.y1 * z
+  const x2 = g.x2 * z
+  const y2 = g.y2 * z
+  // Vertical guide
+  if (Math.abs(x1 - x2) < 0.01) {
+    return { x1, y1: 0, x2, y2: ch }
+  }
+  // Horizontal guide
+  if (Math.abs(y1 - y2) < 0.01) {
+    return { x1: 0, y1, x2: cw, y2 }
+  }
+  return { x1, y1, x2, y2 }
 }
 
 /**
@@ -92,6 +122,27 @@ const getSnapReferenceLines = (selectedSet) => {
   const pageW = svgCanvas.getContentW()
   const pageH = svgCanvas.getContentH()
   refs.push(boxLines({ x: 0, y: 0, width: pageW, height: pageH }))
+  // Mid-page guides help center elements on posters / slides
+  if (pageW > 80) {
+    refs.push({
+      left: pageW / 2,
+      right: pageW / 2,
+      cx: pageW / 2,
+      top: 0,
+      bottom: pageH,
+      cy: pageH / 2
+    })
+  }
+  if (pageH > 80) {
+    refs.push({
+      left: 0,
+      right: pageW,
+      cx: pageW / 2,
+      top: pageH / 2,
+      bottom: pageH / 2,
+      cy: pageH / 2
+    })
+  }
 
   return refs
 }
@@ -191,6 +242,36 @@ export const applyAlignmentSnap = (selectedElements, dx, dy, zoom) => {
     guides.push(bestY.span)
   }
 
+  // Rebuild guide spans from the snapped selection box so lines match the selection chrome
+  if (guides.length) {
+    const snapped = boxLines({
+      x: startBox.x + dx,
+      y: startBox.y + dy,
+      width: startBox.width,
+      height: startBox.height
+    })
+    const rebuilt = []
+    if (bestX) {
+      const xLine = bestX.span.x1
+      rebuilt.push({
+        x1: xLine,
+        y1: Math.min(snapped.top, bestX.span.y1),
+        x2: xLine,
+        y2: Math.max(snapped.bottom, bestX.span.y2)
+      })
+    }
+    if (bestY) {
+      const yLine = bestY.span.y1
+      rebuilt.push({
+        x1: Math.min(snapped.left, bestY.span.x1),
+        y1: yLine,
+        x2: Math.max(snapped.right, bestY.span.x2),
+        y2: yLine
+      })
+    }
+    return { dx, dy, guides: rebuilt }
+  }
+
   return { dx, dy, guides }
 }
 
@@ -207,6 +288,7 @@ export const showAlignmentGuides = (guides, zoom) => {
   const parent = getGuideParent()
   if (!parent) return
 
+  const z = zoom || svgCanvas.getZoom?.() || 1
   const doc = parent.ownerDocument
   const layer = doc.createElementNS(NS.SVG, 'g')
   assignAttributes(layer, {
@@ -214,19 +296,20 @@ export const showAlignmentGuides = (guides, zoom) => {
     style: 'pointer-events: none'
   })
 
-  const strokeWidth = Math.max(1 / zoom, 0.5)
+  const strokeWidth = Math.max(1 / z, 0.5)
   guides.forEach((g) => {
+    const span = spanGuideAcrossContent(g, z)
     const line = doc.createElementNS(NS.SVG, 'line')
     assignAttributes(line, {
-      x1: g.x1,
-      y1: g.y1,
-      x2: g.x2,
-      y2: g.y2,
+      x1: span.x1,
+      y1: span.y1,
+      x2: span.x2,
+      y2: span.y2,
       stroke: '#00d4ff',
       'stroke-width': strokeWidth,
       'vector-effect': 'non-scaling-stroke',
       'stroke-dasharray': '4 3',
-      opacity: 1
+      opacity: 0.95
     })
     layer.append(line)
   })

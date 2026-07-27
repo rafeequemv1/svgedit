@@ -11,14 +11,14 @@ import {
   DEFAULT_IMAGE_MODEL,
   resolveActiveModel,
   resolveImageModel,
-  generateGeminiText,
+  generateGeminiTextWithMeta,
   generateGeminiImage,
   extractSvgFromText,
   diagnoseReplyForSvg,
   compareGeminiModels,
   listGeminiModels
 } from './gemini.js'
-import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, buildContinuityNote, looksLikeEditIntent, summarizeSelectionSvg } from './apply-svg.js'
+import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, formatUserFacingSvgError, looksLikeTruncatedSvg, buildContinuityNote, looksLikeEditIntent, summarizeSelectionSvg } from './apply-svg.js'
 import {
   applySvgToCanvasAnimated,
   replaceSelectionWithSvg,
@@ -120,8 +120,6 @@ export default {
     const ensureAskTip = () => {
       let tip = $id('ai_ask_edit_tip')
       if (tip) return tip
-      const workarea = $id('workarea')
-      if (!workarea) return null
       tip = document.createElement('button')
       tip.type = 'button'
       tip.id = 'ai_ask_edit_tip'
@@ -139,8 +137,19 @@ export default {
         e.stopPropagation()
         openAskAiEdit()
       })
-      workarea.appendChild(tip)
-      workarea.addEventListener('scroll', () => scheduleAskTipReposition(), { passive: true })
+      document.body.appendChild(tip)
+
+      const onLayout = () => scheduleAskTipReposition()
+      window.addEventListener('resize', onLayout, { passive: true })
+      window.addEventListener('scroll', onLayout, { passive: true, capture: true })
+      const workarea = $id('workarea')
+      workarea?.addEventListener('scroll', onLayout, { passive: true })
+      const root = document.querySelector('.svg_editor')
+      if (root && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(onLayout)
+        ro.observe(root)
+        if (workarea) ro.observe(workarea)
+      }
       return tip
     }
 
@@ -173,8 +182,7 @@ export default {
 
     const repositionAskTip = () => {
       const tip = ensureAskTip()
-      const workarea = $id('workarea')
-      if (!tip || !workarea) return
+      if (!tip) return
       const elems = tipElems.length
         ? tipElems
         : (svgCanvas.getSelectedElements?.() || []).filter(Boolean)
@@ -187,12 +195,9 @@ export default {
         tip.hidden = true
         return
       }
-      const work = workarea.getBoundingClientRect()
-      const x = screen.left - work.left + workarea.scrollLeft + screen.width / 2
-      const y = screen.top - work.top + workarea.scrollTop - 10
       tip.hidden = false
-      tip.style.left = `${Math.round(x)}px`
-      tip.style.top = `${Math.max(4, Math.round(y))}px`
+      tip.style.left = `${Math.round(screen.left + screen.width / 2)}px`
+      tip.style.top = `${Math.max(4, Math.round(screen.top - 8))}px`
     }
 
     const scheduleAskTipReposition = () => {
@@ -385,6 +390,9 @@ export default {
       const btn = $id('tool_aichat')
       if (btn) btn.pressed = open
       svgEditor.updateCanvas?.(false)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => scheduleAskTipReposition())
+      })
       if (open) $id('ai_chat_input')?.focus()
     }
 
@@ -914,23 +922,48 @@ export default {
         }
 
         setSteps(2, model)
-        const reply = await generateGeminiText({
-          apiKey,
-          model,
-          contents,
-          systemInstruction,
-          signal
-        })
-        if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+        const drawOnce = async (sys, contentsIn, retryNote) => {
+          const gen = await generateGeminiTextWithMeta({
+            apiKey,
+            model,
+            contents: contentsIn,
+            systemInstruction: sys + (retryNote ? `\n\nRETRY: ${retryNote}` : ''),
+            signal
+          })
+          const replyText = gen.text
+          const svgOut = extractSvgFromText(replyText)
+          const talkOut = conversationalTextFromReply(replyText, svgOut)
+          const diag = {
+            ...diagnoseReplyForSvg(replyText, svgOut),
+            finishReason: gen.finishReason
+          }
+          if (!svgOut) {
+            return { reply: replyText, svg: null, talk: talkOut, applied: { ok: false }, diag }
+          }
+          const applied = await applyOne(svgOut, effectiveMode, { editSelection, signal })
+          return { reply: replyText, svg: svgOut, talk: talkOut, applied, diag }
+        }
 
-        const svg = extractSvgFromText(reply)
-        const talk = conversationalTextFromReply(reply, svg)
-        const replyDiag = diagnoseReplyForSvg(reply, svg)
+        const retryNote = 'Previous SVG was truncated or had invalid XML. Output a SIMPLER drawing: ```svg block first, no filters/shadows, ≤40 elements, all tags closed.'
+        let result = await drawOnce(systemInstruction, contents, '')
+        if (
+          !result.applied.ok &&
+          result.svg &&
+          looksLikeTruncatedSvg({ ...result.diag, ...(result.applied.details || {}) })
+        ) {
+          setSteps(2, 'Retrying simpler SVG…')
+          setStatus(t(svgEditor, 'svgRetry'))
+          result = await drawOnce(systemInstruction, contents, retryNote)
+          if (result.applied.ok) {
+            result.diag.retried = true
+          }
+        }
+
+        const { reply, svg, talk, applied, diag: replyDiag } = result
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
         if (svg) {
           setSteps(3)
-          const applied = await applyOne(svg, effectiveMode, { editSelection, signal })
-          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
           history.push({
             role: 'model',
             text: compactModelHistory(reply, svg, applied.ok),
@@ -949,7 +982,11 @@ export default {
           })
           setSteps(4)
           if (!applied.ok) {
-            showApplyFailure(applied.message || t(svgEditor, 'emptySvg'), {
+            const userMsg = formatUserFacingSvgError({
+              ...replyDiag,
+              ...(applied.details || {})
+            }, applied.message)
+            showApplyFailure(userMsg, {
               ...replyDiag,
               ...(applied.details || {}),
               stage: 'apply-after-extract'
@@ -966,7 +1003,7 @@ export default {
         const noSvgRow = appendMsg('model', talk || reply.slice(0, 2000))
         // Reply looked like it tried to draw but extract failed
         if (replyDiag.hasSvgOpen || /```\s*svg/i.test(reply)) {
-          showApplyFailure(t(svgEditor, 'emptySvg'), {
+          showApplyFailure(formatUserFacingSvgError(replyDiag, t(svgEditor, 'emptySvg')), {
             ...replyDiag,
             stage: 'extract',
             messageHint: 'Model reply contained SVG markers but no usable fragment was extracted (often truncated output).'
@@ -1291,10 +1328,18 @@ export default {
       selectedChanged (opts) {
         updateAskTip(opts?.elems)
       },
+      elementTransition () {
+        if (tipElems.length || (svgCanvas.getSelectedElements?.() || []).some(Boolean)) {
+          scheduleAskTipReposition()
+        }
+      },
       elementChanged () {
         if (tipElems.length || (svgCanvas.getSelectedElements?.() || []).some(Boolean)) {
           scheduleAskTipReposition()
         }
+      },
+      canvasUpdated () {
+        scheduleAskTipReposition()
       },
       zoomChanged () {
         scheduleAskTipReposition()

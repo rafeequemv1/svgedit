@@ -34,6 +34,41 @@ export function formatApplyFailureDetails (details, message) {
 }
 
 /**
+ * User-friendly summary when SVG apply fails.
+ * @param {object} [details]
+ * @param {string} [message]
+ */
+export function formatUserFacingSvgError (details, message) {
+  const d = details || {}
+  const truncated = (
+    d.hasFenceOpen && !d.hasFenceClose ||
+    d.salvagedClose ||
+    d.finishReason === 'MAX_TOKENS' ||
+    /truncat|mismatch|line \d+/i.test(String(d.parserError || message || ''))
+  )
+  if (truncated) {
+    return 'The drawing was cut off before the SVG finished (too much detail for one reply). Retrying with a simpler version, or ask for “simple DNA helix, no shadows”.'
+  }
+  if (d.parserError) {
+    return 'The SVG in the reply had invalid XML. Try again or ask for a simpler drawing.'
+  }
+  return message || 'Could not apply SVG from the reply. Try again or rephrase.'
+}
+
+/**
+ * @param {object} [details]
+ */
+export function looksLikeTruncatedSvg (details) {
+  const d = details || {}
+  return !!(
+    (d.hasFenceOpen && !d.hasFenceClose) ||
+    d.salvagedClose ||
+    d.finishReason === 'MAX_TOKENS' ||
+    /mismatch|Opening and ending tag/i.test(String(d.parserError || ''))
+  )
+}
+
+/**
  * Diagnose / sanitize model SVG before import.
  * @param {string} svgXml
  * @returns {{ ok: boolean, xml?: string, message?: string, details?: object }}
@@ -68,8 +103,17 @@ export function diagnoseAndSanitizeSvg (svgXml) {
     details.salvagedClose = true
   }
 
-  const doc = new DOMParser().parseFromString(xml, 'image/svg+xml')
-  const err = doc.querySelector('parsererror')
+  let doc = new DOMParser().parseFromString(xml, 'image/svg+xml')
+  let err = doc.querySelector('parsererror')
+  if (err) {
+    const salvaged = salvageFromParserError(xml, err.textContent || '')
+    if (salvaged && salvaged !== xml) {
+      xml = salvaged
+      details.salvagedParse = true
+      doc = new DOMParser().parseFromString(xml, 'image/svg+xml')
+      err = doc.querySelector('parsererror')
+    }
+  }
   if (err) {
     details.parserError = (err.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 500)
     details.previewHead = xml.slice(0, 240)
@@ -96,7 +140,7 @@ export function diagnoseAndSanitizeSvg (svgXml) {
 }
 
 function closeDanglingTags (xml) {
-  const voidish = new Set(['path', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'rect', 'stop', 'use', 'image', 'meta'])
+  const voidish = new Set(['path', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'rect', 'stop', 'use', 'image', 'meta', 'feDropShadow', 'feGaussianBlur', 'feOffset', 'feMerge', 'feMergeNode', 'feFlood', 'feComposite', 'feBlend', 'feColorMatrix'])
   const stack = []
   const re = /<\/?([A-Za-z][\w:-]*)\b[^>]*\/?>/g
   let m
@@ -118,6 +162,42 @@ function closeDanglingTags (xml) {
     out += `</${stack.pop()}>`
   }
   return out
+}
+
+/**
+ * Drop broken tail after parser line error and close remaining tags.
+ * @param {string} xml
+ * @param {string} parserError
+ */
+function salvageFromParserError (xml, parserError) {
+  const lineMatch = String(parserError || '').match(/line\s+(\d+)/i)
+  if (lineMatch) {
+    const badLine = parseInt(lineMatch[1], 10)
+    if (badLine > 2) {
+      let cut = xml.split(/\r?\n/).slice(0, badLine - 1).join('\n')
+      cut = cut.replace(/<[^>]*$/m, '')
+      cut = closeDanglingTags(cut)
+      if (!/<\/svg>/i.test(cut)) cut += '</svg>'
+      const doc = new DOMParser().parseFromString(cut, 'image/svg+xml')
+      if (!doc.querySelector('parsererror') && doc.documentElement?.localName === 'svg') {
+        return cut
+      }
+    }
+  }
+  // Last resort: strip filters/defs (often truncated) and close
+  let stripped = xml
+    .replace(/<filter[\s\S]*?<\/filter>/gi, '')
+    .replace(/<filter[\s\S]*$/i, '')
+    .replace(/<defs>[\s\S]*?<\/defs>/gi, '')
+    .replace(/<defs>[\s\S]*$/i, '')
+  stripped = stripped.replace(/<[^>]*$/m, '')
+  stripped = closeDanglingTags(stripped)
+  if (!/<\/svg>/i.test(stripped)) stripped += '</svg>'
+  const doc2 = new DOMParser().parseFromString(stripped, 'image/svg+xml')
+  if (!doc2.querySelector('parsererror') && doc2.documentElement?.localName === 'svg') {
+    return stripped
+  }
+  return null
 }
 
 /**
@@ -280,8 +360,10 @@ ${selectionSvg
 - Draw mode: "${mode}" → ${mode === 'replace'
     ? 'produce a full self-contained scene that can replace the document.'
     : 'produce a self-contained graphic that will be ADDED onto the existing canvas.'}
-- If you draw: put ONE complete <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"> … </svg> in your reply (optionally inside a \`\`\`svg fence).
-- Always include a short natural-language message BEFORE or AFTER the SVG (what you drew / how to edit it with tools).
+- If you draw: put ONE complete <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"> … </svg> in your reply inside a \`\`\`svg fence.
+- CRITICAL — output limits: Put the full \`\`\`svg … \`\`\` block FIRST (before any caption). Keep SVG compact (≤80 elements). Close every tag; never emit </svg> while a <g> is still open.
+- For DNA / molecules: use 2 smooth paths + ≤12 rung lines. No feDropShadow, feGaussianBlur, or heavy <filter> blocks (they cause truncation). Suggest the DNA helix brush for interactive paths.
+- Short caption AFTER the fence (1–2 sentences). Long intros before SVG often get the drawing cut off.
 - Pure Q&A / how-to / brainstorming: reply in text ONLY — do not invent SVG unless they asked to draw.
 - Follow-ups like "make it blue", "add a label", "move it left": build on prior turns; redraw or extend with SVG (prefer append/selection-edit semantics unless they say replace everything).
 - No scripts, foreignObject, external images/URLs, or HTML. Use path/rect/circle/ellipse/line/polygon/polyline/text/g (and nested groups). Marker defs for arrowheads are OK. Science-friendly colors (avoid neon purple). font-family="sans-serif" or "serif". Simple ids (ai_1…).

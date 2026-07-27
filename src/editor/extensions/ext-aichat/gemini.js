@@ -171,6 +171,48 @@ export async function generateGeminiText ({
 }
 
 /**
+ * Like generateGeminiText but returns finish metadata for truncation detection.
+ * @returns {Promise<{text:string, finishReason:string|null}>}
+ */
+export async function generateGeminiTextWithMeta ({
+  apiKey,
+  model,
+  contents,
+  systemInstruction,
+  signal,
+  generationConfig
+}) {
+  const safeModel = resolveActiveModel(model)
+  const data = await postGemini({
+    apiKey,
+    model: safeModel,
+    contents,
+    systemInstruction,
+    signal,
+    generationConfig: generationConfig || {
+      temperature: 0.45,
+      maxOutputTokens: 16384
+    }
+  })
+
+  const parts = data?.candidates?.[0]?.content?.parts
+  const finishReason = data?.candidates?.[0]?.finishReason || null
+  if (!Array.isArray(parts) || !parts.length) {
+    const block = data?.promptFeedback?.blockReason
+    const finish = finishReason
+    throw new Error(block
+      ? `Blocked: ${block}`
+      : finish
+        ? `Empty model response (${finish})`
+        : 'Empty model response')
+  }
+  return {
+    text: parts.map((p) => p.text || '').join(''),
+    finishReason
+  }
+}
+
+/**
  * Generate a raster image via Nano Banana / Gemini image models.
  * @returns {Promise<{mimeType:string, data:string, dataUrl:string, text:string}>}
  */
