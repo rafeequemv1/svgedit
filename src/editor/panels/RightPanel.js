@@ -3,6 +3,8 @@ import RightPanelHtml from './RightPanel.html'
 
 const { $click, $id } = SvgCanvas
 
+const LS_COLLAPSED = 'svgedit.sidepanel.collapsed'
+
 /**
  * Right-side tabbed panel (Properties, Align, Layers).
  */
@@ -13,6 +15,7 @@ class RightPanel {
   constructor (editor) {
     this.editor = editor
     this.activeTab = 'properties'
+    this.collapsed = false
   }
 
   /**
@@ -63,7 +66,74 @@ class RightPanel {
     })
     this.switchTab('properties')
 
+    this.#initDock()
     this.#initPencilSmoothing()
+  }
+
+  /**
+   * Minimize / expand the properties dock.
+   * @returns {void}
+   * @private
+   */
+  #initDock () {
+    const btn = $id('sidepanel_dock_btn')
+    if (!btn) return
+
+    const saved = localStorage.getItem(LS_COLLAPSED) === '1'
+    this.setCollapsed(saved)
+
+    $click(btn, () => {
+      this.setCollapsed(!this.collapsed)
+    })
+
+    // When AI chat opens on a narrow layout, auto-dock properties once (still toggleable).
+    document.addEventListener('modeChange', () => { /* keep hook for future */ })
+    const root = document.querySelector('.svg_editor')
+    if (root && typeof MutationObserver !== 'undefined') {
+      const obs = new MutationObserver(() => {
+        if (root.classList.contains('ai-chat-open') && !this._aiAutoDocked) {
+          if (!this.collapsed && window.innerWidth < 1280) {
+            this.setCollapsed(true)
+            this._aiAutoDocked = true
+          }
+        }
+        if (!root.classList.contains('ai-chat-open')) {
+          this._aiAutoDocked = false
+        }
+      })
+      obs.observe(root, { attributes: true, attributeFilter: ['class'] })
+    }
+  }
+
+  /**
+   * @param {boolean} collapsed
+   * @returns {void}
+   */
+  setCollapsed (collapsed) {
+    this.collapsed = !!collapsed
+    const root = document.querySelector('.svg_editor')
+    const btn = $id('sidepanel_dock_btn')
+    const { i18next } = this.editor
+    root?.classList.toggle('sidepanel-collapsed', this.collapsed)
+    localStorage.setItem(LS_COLLAPSED, this.collapsed ? '1' : '0')
+
+    if (btn) {
+      if (this.collapsed) {
+        btn.textContent = i18next.t('ui.dock_rail_label')
+        btn.title = i18next.t('ui.undock_properties')
+        btn.setAttribute('aria-label', i18next.t('ui.undock_properties'))
+        btn.setAttribute('aria-expanded', 'false')
+      } else {
+        btn.textContent = '‹'
+        btn.title = i18next.t('ui.dock_properties')
+        btn.setAttribute('aria-label', i18next.t('ui.dock_properties'))
+        btn.setAttribute('aria-expanded', 'true')
+      }
+    }
+
+    try {
+      this.editor.updateCanvas?.(false)
+    } catch (_) { /* ignore */ }
   }
 
   /**
@@ -114,6 +184,9 @@ class RightPanel {
    * @returns {void}
    */
   switchTab (tabId) {
+    if (this.collapsed) {
+      this.setCollapsed(false)
+    }
     this.activeTab = tabId
     document.querySelectorAll('.right_tab_btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tabId)

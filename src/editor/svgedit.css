@@ -25,7 +25,7 @@
 .svg_editor {
   display: grid;
   grid-template-rows: minmax(var(--top-toolbar-min-height), auto) 15px 1fr 40px;
-  grid-template-columns: 40px 15px 50px 1fr var(--right-panel-width);
+  grid-template-columns: 40px 15px 50px minmax(0, 1fr) var(--right-panel-width);
   grid-template-areas:
     "main main   main top top"
     "left corner rulerX rulerX side"
@@ -38,15 +38,24 @@
   user-select: text;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .svg_editor.ai-chat-open {
-  grid-template-columns: var(--ai-chat-width) 40px 15px 50px 1fr var(--right-panel-width);
+  grid-template-columns: minmax(260px, var(--ai-chat-width)) 40px 15px 50px minmax(0, 1fr) var(--right-panel-width);
   grid-template-areas:
-    "aichat main main main top"
-    "aichat left corner rulerX side"
-    "aichat left rulerY workarea side"
-    "aichat left bottom bottom bottom";
+    "aichat main   main   main    top     top"
+    "aichat left   corner rulerX  rulerX  side"
+    "aichat left   rulerY workarea workarea side"
+    "aichat left   bottom bottom  bottom  bottom";
+}
+
+.svg_editor.sidepanel-collapsed {
+  --right-panel-width: 36px;
+}
+
+.svg_editor.ai-chat-open.sidepanel-collapsed {
+  grid-template-columns: minmax(260px, var(--ai-chat-width)) 40px 15px 50px minmax(0, 1fr) var(--right-panel-width);
 }
 
 #title_panel>p {
@@ -64,12 +73,68 @@
   border-left: 1px solid var(--border-color);
   overflow: hidden;
   min-width: 0;
+  max-width: 100%;
+  position: relative;
+}
+
+#right_panel_header {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 36px;
 }
 
 #right_panel_tabs {
   display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+#sidepanel_dock_btn {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-color);
+  width: 36px;
+  border: none;
+  border-left: 1px solid var(--border-color);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+#sidepanel_dock_btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.svg_editor.sidepanel-collapsed #sidepanels {
+  align-items: stretch;
+}
+
+.svg_editor.sidepanel-collapsed #right_panel_tabs,
+.svg_editor.sidepanel-collapsed #sidepanel_content {
+  display: none;
+}
+
+.svg_editor.sidepanel-collapsed #right_panel_header {
+  flex-direction: column;
+  border-bottom: none;
+  height: 100%;
+}
+
+.svg_editor.sidepanel-collapsed #sidepanel_dock_btn {
+  width: 100%;
+  height: 100%;
+  border-left: none;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.08em;
+  font-size: 9pt;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 12px 0;
 }
 
 .right_tab_btn {
@@ -901,6 +966,8 @@ ul li.current {
   border-right: 1px solid var(--border-color);
   color: #e8e8e8;
   min-width: 0;
+  max-width: var(--ai-chat-width);
+  width: 100%;
   overflow: hidden;
   z-index: 4;
 }

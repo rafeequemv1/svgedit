@@ -11,7 +11,7 @@ import {
   compareGeminiModels,
   listGeminiModels
 } from './gemini.js'
-import { applySvgToCanvas, buildSystemPrompt } from './apply-svg.js'
+import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory } from './apply-svg.js'
 
 const name = 'aichat'
 const LS_KEY = 'svgedit.gemini.apiKey'
@@ -169,10 +169,11 @@ export default {
 
     const buildContentsForPrompt = (prompt, compareMode) => {
       if (compareMode) {
-        // Fresh single-turn for fair compare (same question, no chat bias)
         return [{ role: 'user', parts: [{ text: prompt }] }]
       }
-      return history.map((m) => ({
+      // Keep recent turns for conversation without blowing the context window
+      const recent = history.slice(-16)
+      return recent.map((m) => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.text }]
       }))
@@ -249,17 +250,26 @@ export default {
           systemInstruction
         })
 
-        history.push({ role: 'model', text: reply })
         const svg = extractSvgFromText(reply)
-        if (!svg) {
-          appendMsg('model', reply.slice(0, 1200) || t(svgEditor, 'emptySvg'))
-          setStatus(t(svgEditor, 'emptySvg'), true)
+        const talk = conversationalTextFromReply(reply, svg)
+
+        if (svg) {
+          const applied = applyOne(svg, mode)
+          history.push({
+            role: 'model',
+            text: compactModelHistory(reply, svg, applied)
+          })
+          appendMsg('model', talk || (applied ? '✓ Drawn on the canvas.' : 'SVG returned but could not apply.'))
+          if (!applied) {
+            setStatus(t(svgEditor, 'emptySvg'), true)
+          }
           return
         }
 
-        const preview = reply.replace(svg, '').replace(/```(?:svg|xml)?/gi, '').replace(/```/g, '').trim()
-        appendMsg('model', preview || '✓ SVG ready')
-        applyOne(svg, mode)
+        // Conversational / how-to reply with no drawing
+        history.push({ role: 'model', text: reply.slice(0, 8000) })
+        appendMsg('model', talk || reply.slice(0, 2000))
+        setStatus(t(svgEditor, 'chatOk'))
       } catch (err) {
         const msg = err?.message || String(err)
         appendMsg('model', `${t(svgEditor, 'errorPrefix')}: ${msg}`)

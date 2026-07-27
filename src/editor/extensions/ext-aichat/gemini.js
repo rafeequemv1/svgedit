@@ -48,7 +48,7 @@ export async function generateGeminiText ({
         ? { parts: [{ text: systemInstruction }] }
         : undefined,
       generationConfig: {
-        temperature: 0.35,
+        temperature: 0.45,
         maxOutputTokens: 8192
       }
     })
