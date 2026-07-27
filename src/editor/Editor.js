@@ -276,7 +276,8 @@ class Editor extends EditorStartup {
       {
         key: ['delete/backspace', true],
         fn: () => {
-          if (this.selectedElement || this.multiselected) {
+          const els = this.svgCanvas.selectedElements || []
+          if (this.selectedElement || this.multiselected || els.some(Boolean)) {
             this.svgCanvas.deleteSelectedElements()
           }
         }
@@ -434,8 +435,11 @@ class Editor extends EditorStartup {
     })
     // register the keydown event
     document.addEventListener('keydown', (e) => {
-      // only track keyboard shortcuts for the body containing the SVG-Editor
-      if (e.target.nodeName !== 'BODY') return
+      // Shortcuts when focus is on canvas / chrome — not when typing in fields
+      const tag = e.target?.nodeName
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+        e.target?.isContentEditable
+      if (editable) return
       // normalize key
       const key = `${e.altKey ? 'alt+' : ''}${e.shiftKey ? 'shift+' : ''}${
         e.metaKey ? 'meta+' : ''

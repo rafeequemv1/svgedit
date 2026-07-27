@@ -51,7 +51,7 @@ async function generateHandler (req, res) {
   try {
     const body = await readJsonBody(req)
     const apiKey = String(body.apiKey || '').trim()
-    const model = String(body.model || 'gemini-2.5-flash').trim()
+    const model = String(body.model || 'gemini-3.6-flash').trim()
     if (!apiKey) return sendJson(res, 400, { error: 'Missing API key' })
     if (!/^[a-zA-Z0-9._-]+$/.test(model)) {
       return sendJson(res, 400, { error: 'Invalid model id' })

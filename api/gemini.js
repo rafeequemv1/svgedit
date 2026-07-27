@@ -18,7 +18,7 @@ export default async function handler (req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
     const apiKey = String(body.apiKey || '').trim()
-    const model = String(body.model || 'gemini-2.5-flash').trim()
+    const model = String(body.model || 'gemini-3.6-flash').trim()
     if (!apiKey) {
       res.status(400).json({ error: 'Missing API key' })
       return

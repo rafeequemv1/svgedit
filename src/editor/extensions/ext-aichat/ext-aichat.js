@@ -5,13 +5,25 @@
 
 import {
   GEMINI_MODELS,
+  GEMINI_IMAGE_MODELS,
   DEFAULT_COMPARE_MODELS,
+  DEFAULT_MODEL,
+  DEFAULT_IMAGE_MODEL,
+  resolveActiveModel,
+  resolveImageModel,
   generateGeminiText,
+  generateGeminiImage,
   extractSvgFromText,
   compareGeminiModels,
   listGeminiModels
 } from './gemini.js'
 import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory } from './apply-svg.js'
+import {
+  applySvgToCanvasAnimated,
+  replaceSelectionWithSvg,
+  serializeSelection
+} from './reveal-svg.js'
+import { placeImageOnCanvas, buildRasterPrompt } from './place-image.js'
 import {
   blobToGeminiImage,
   imageFilesFromDataTransfer,
@@ -22,6 +34,8 @@ import {
 const name = 'aichat'
 const LS_KEY = 'svgedit.gemini.apiKey'
 const LS_MODEL = 'svgedit.gemini.model'
+const LS_IMAGE_MODEL = 'svgedit.gemini.imageModel'
+const LS_TASK = 'svgedit.aichat.task'
 const LS_OPEN = 'svgedit.aichat.open'
 const LS_COMPARE = 'svgedit.aichat.compare'
 const LS_COMPARE_MODELS = 'svgedit.aichat.compareModels'
@@ -56,14 +70,167 @@ export default {
     /** @type {Array<{id:string, mimeType:string, data:string, previewUrl:string, name:string}>} */
     let pendingImages = []
     let imageIdSeq = 0
+    /** @type {AbortController|null} */
+    let activeAbort = null
+    /** @type {Array<{id:string, at:number, prompt:string, mode:string, svg?:string, note:string}>} */
+    let actionHistory = []
+
+    const STEPS = [
+      'Understanding request',
+      'Planning drawing',
+      'Generating SVG',
+      'Drawing on canvas',
+      'Done'
+    ]
+
+    const setSteps = (activeIndex, detail = '') => {
+      const box = $id('ai_steps')
+      if (!box) return
+      box.style.display = 'block'
+      box.innerHTML = STEPS.map((label, i) => {
+        let cls = 'ai-step'
+        if (i < activeIndex) cls += ' done'
+        if (i === activeIndex) cls += ' active'
+        const extra = i === activeIndex && detail ? ` — ${detail}` : ''
+        return `<div class="${cls}"><span class="ai-step-dot"></span>${label}${extra}</div>`
+      }).join('')
+    }
+
+    const hideSteps = () => {
+      const box = $id('ai_steps')
+      if (box) {
+        box.style.display = 'none'
+        box.innerHTML = ''
+      }
+    }
+
+    const setBusyUi = (on) => {
+      busy = on
+      const sendBtn = $id('ai_chat_send')
+      const stopBtn = $id('ai_chat_stop')
+      if (sendBtn) sendBtn.disabled = on
+      if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none'
+    }
+
+    const stopGeneration = () => {
+      activeAbort?.abort()
+      activeAbort = null
+      setBusyUi(false)
+      hideSteps()
+      setStatus(t(svgEditor, 'stopped'))
+    }
+
+    const pushActionHistory = (entry) => {
+      actionHistory.unshift({
+        id: `hist_${Date.now()}`,
+        at: Date.now(),
+        ...entry
+      })
+      actionHistory = actionHistory.slice(0, 40)
+      renderActionHistory()
+    }
+
+    const renderActionHistory = () => {
+      const list = $id('ai_history_list')
+      if (!list) return
+      if (!actionHistory.length) {
+        list.innerHTML = `<p class="ai_hint">${t(svgEditor, 'historyEmpty')}</p>`
+        return
+      }
+      list.innerHTML = actionHistory.map((h) => {
+        const time = new Date(h.at).toLocaleTimeString()
+        return `<div class="ai-history-item" data-id="${h.id}">
+          <div class="ai-history-meta">${time} · ${h.mode}</div>
+          <div class="ai-history-prompt">${(h.prompt || '').slice(0, 120)}</div>
+          <div class="ai-history-note">${h.note || ''}</div>
+          ${h.svg ? `<button type="button" class="ai_btn secondary ai-history-reapply" data-id="${h.id}">${t(svgEditor, 'historyReapply')}</button>` : ''}
+        </div>`
+      }).join('')
+      list.querySelectorAll('.ai-history-reapply').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const item = actionHistory.find((x) => x.id === btn.getAttribute('data-id'))
+          if (!item?.svg) return
+          setSteps(3, 'Replaying…')
+          try {
+            await applySvgToCanvasAnimated(svgEditor, item.svg, item.mode === 'replace' ? 'replace' : 'append', {
+              onProgress: (p) => setSteps(3, p.label)
+            })
+            setSteps(4)
+            setStatus(t(svgEditor, 'appliedAppend'))
+          } catch (err) {
+            setStatus(err?.message || String(err), true)
+          } finally {
+            setTimeout(hideSteps, 800)
+          }
+        })
+      })
+    }
 
     const getApiKey = () => localStorage.getItem(LS_KEY) || ''
-    const getModel = () => localStorage.getItem(LS_MODEL) || GEMINI_MODELS[0].id
+    const getModel = () => resolveActiveModel(localStorage.getItem(LS_MODEL) || DEFAULT_MODEL)
+    const getImageModel = () => resolveImageModel(localStorage.getItem(LS_IMAGE_MODEL) || DEFAULT_IMAGE_MODEL)
+    const getTaskMode = () => {
+      const v = localStorage.getItem(LS_TASK) || 'draw'
+      return (v === 'image' || v === 'icon') ? v : 'draw'
+    }
     const getCompareOn = () => localStorage.getItem(LS_COMPARE) === '1'
+
+    const fillModelSelect = (sel, models, selectedId) => {
+      if (!sel) return
+      sel.innerHTML = ''
+      models.forEach((m) => {
+        const opt = document.createElement('option')
+        opt.value = m.id
+        opt.textContent = `${m.label}${m.powerful ? ' ★' : ''}`
+        sel.appendChild(opt)
+      })
+      if ([...sel.options].some((o) => o.value === selectedId)) sel.value = selectedId
+      else if (models[0]) sel.value = models[0].id
+    }
+
+    const syncTaskModeUi = () => {
+      const task = $id('ai_task_mode')?.value || 'draw'
+      localStorage.setItem(LS_TASK, task)
+      const isRaster = task === 'image' || task === 'icon'
+      const modelSel = $id('ai_model')
+      if (isRaster) {
+        fillModelSelect(modelSel, GEMINI_IMAGE_MODELS, getImageModel())
+        localStorage.setItem(LS_IMAGE_MODEL, modelSel?.value || DEFAULT_IMAGE_MODEL)
+      } else {
+        fillModelSelect(modelSel, GEMINI_MODELS, getModel())
+        localStorage.setItem(LS_MODEL, modelSel?.value || DEFAULT_MODEL)
+      }
+      const compareWrap = $id('ai_compare_wrap')
+      const drawOpts = $id('ai_draw_options')
+      if (compareWrap) compareWrap.style.display = isRaster ? 'none' : ''
+      if (drawOpts) drawOpts.style.display = isRaster ? 'none' : ''
+      if (isRaster && $id('ai_compare_on')) {
+        $id('ai_compare_on').checked = false
+        syncCompareUi()
+      }
+      const input = $id('ai_chat_input')
+      if (input) {
+        input.placeholder = task === 'icon'
+          ? t(svgEditor, 'placeholderIcon')
+          : task === 'image'
+            ? t(svgEditor, 'placeholderImage')
+            : t(svgEditor, 'placeholder')
+      }
+      const hint = $id('ai_task_hint')
+      if (hint) {
+        hint.textContent = task === 'icon'
+          ? t(svgEditor, 'taskHintIcon')
+          : task === 'image'
+            ? t(svgEditor, 'taskHintImage')
+            : t(svgEditor, 'taskHint')
+      }
+    }
     const getCompareModels = () => {
       try {
         const raw = JSON.parse(localStorage.getItem(LS_COMPARE_MODELS) || 'null')
-        if (Array.isArray(raw) && raw.length) return raw
+        if (Array.isArray(raw) && raw.length) {
+          return raw.map(resolveActiveModel).filter((id, i, arr) => arr.indexOf(id) === i)
+        }
       } catch (_) { /* ignore */ }
       return [...DEFAULT_COMPARE_MODELS]
     }
@@ -198,15 +365,31 @@ export default {
       el.classList.toggle('error', !!isError)
     }
 
-    const applyOne = (svg, mode) => {
-      const result = applySvgToCanvas(svgEditor, svg, mode)
+    const applyOne = async (svg, mode, opts = {}) => {
+      const editSelection = !!opts.editSelection
+      const signal = opts.signal
+      const result = editSelection
+        ? await replaceSelectionWithSvg(svgEditor, svg, {
+          signal,
+          onProgress: (p) => setSteps(3, p.label)
+        })
+        : await applySvgToCanvasAnimated(svgEditor, svg, mode, {
+          signal,
+          onProgress: (p) => setSteps(3, p.label)
+        })
       if (!result.ok) {
-        setStatus(result.message || t(svgEditor, 'emptySvg'), true)
-        return false
+        // Fallback to instant apply if progressive parse failed
+        const fallback = applySvgToCanvas(svgEditor, svg, mode)
+        if (!fallback.ok) {
+          setStatus(result.message || fallback.message || t(svgEditor, 'emptySvg'), true)
+          return false
+        }
       }
-      setStatus(mode === 'replace'
-        ? t(svgEditor, 'appliedReplace')
-        : t(svgEditor, 'appliedAppend'))
+      setStatus(editSelection
+        ? t(svgEditor, 'appliedSelection')
+        : (mode === 'replace'
+          ? t(svgEditor, 'appliedReplace')
+          : t(svgEditor, 'appliedAppend')))
       return true
     }
 
@@ -240,9 +423,26 @@ export default {
           applyBtn.type = 'button'
           applyBtn.className = 'ai_btn primary'
           applyBtn.textContent = t(svgEditor, 'applyToCanvas')
-          applyBtn.addEventListener('click', () => {
+          applyBtn.addEventListener('click', async () => {
             const svg = compareSvgCache.get(r.model)
-            if (svg) applyOne(svg, mode)
+            if (!svg) return
+            setBusyUi(true)
+            setSteps(3)
+            try {
+              const ok = await applyOne(svg, mode)
+              if (ok) {
+                pushActionHistory({
+                  prompt: 'Compare apply',
+                  mode,
+                  svg,
+                  note: `Applied ${r.label}`
+                })
+                setSteps(4)
+              }
+            } finally {
+              setBusyUi(false)
+              setTimeout(hideSteps, 800)
+            }
           })
           actions.appendChild(applyBtn)
           card.appendChild(actions)
@@ -272,10 +472,16 @@ export default {
       const input = $id('ai_chat_input')
       const prompt = (input?.value || '').trim()
       const apiKey = ($id('ai_api_key')?.value || getApiKey()).trim()
-      const model = $id('ai_model')?.value || getModel()
+      const taskMode = $id('ai_task_mode')?.value || getTaskMode()
+      const isRaster = taskMode === 'image' || taskMode === 'icon'
+      const model = isRaster
+        ? resolveImageModel($id('ai_model')?.value || getImageModel())
+        : resolveActiveModel($id('ai_model')?.value || getModel())
       const mode = $id('ai_draw_mode')?.value || 'append'
       const includeCanvas = !!$id('ai_include_canvas')?.checked
-      const compareOn = !!$id('ai_compare_on')?.checked
+      const compareOn = !isRaster && !!$id('ai_compare_on')?.checked
+      const editSelection = !isRaster && !!$id('ai_edit_selection')?.checked
+      const selectionSvg = editSelection ? serializeSelection(svgCanvas) : ''
       const imagesSnapshot = pendingImages.map((p) => ({
         mimeType: p.mimeType,
         data: p.data,
@@ -289,9 +495,15 @@ export default {
         return
       }
       if (!prompt && !imagesSnapshot.length) return
+      if (editSelection && !selectionSvg) {
+        setStatus(t(svgEditor, 'needSelection'), true)
+        return
+      }
 
       localStorage.setItem(LS_KEY, apiKey)
-      localStorage.setItem(LS_MODEL, model)
+      localStorage.setItem(LS_TASK, taskMode)
+      if (isRaster) localStorage.setItem(LS_IMAGE_MODEL, model)
+      else localStorage.setItem(LS_MODEL, model)
       persistCompareModels()
 
       const compareIds = compareOn ? selectedCompareModels() : []
@@ -300,10 +512,15 @@ export default {
         return
       }
 
-      busy = true
-      $id('ai_chat_send').disabled = true
+      activeAbort?.abort()
+      activeAbort = new AbortController()
+      const { signal } = activeAbort
+      setBusyUi(true)
       input.value = ''
-      const userParts = buildUserParts(prompt, imagesSnapshot)
+      const userParts = buildUserParts(
+        isRaster ? buildRasterPrompt(prompt, taskMode === 'icon' ? 'icon' : 'image') : prompt,
+        imagesSnapshot
+      )
       const displayText = prompt || (imagesSnapshot.length
         ? t(svgEditor, 'imageOnlyPrompt').replace('{{n}}', String(imagesSnapshot.length))
         : '')
@@ -327,59 +544,133 @@ export default {
         })
       }
 
+      setSteps(0)
       setStatus(compareOn
         ? t(svgEditor, 'comparing').replace('{{n}}', String(compareIds.length))
-        : t(svgEditor, 'thinking'))
+        : t(svgEditor, 'stepUnderstanding'))
 
       try {
+        // ——— Image / Icon generation ———
+        if (isRaster) {
+          setSteps(1, taskMode === 'icon' ? 'Icon' : 'Image')
+          setSteps(2, model)
+          const contents = [{ role: 'user', parts: userParts }]
+          const systemInstruction = taskMode === 'icon'
+            ? 'You are an expert BioRender-style scientific icon illustrator. Always return a generated image. Prefer pure white backgrounds suitable for cutout icons. No text overlays unless essential.'
+            : 'You are an expert image generator. Always return a generated image that matches the user request.'
+          const imgResult = await generateGeminiImage({
+            apiKey,
+            model,
+            contents,
+            systemInstruction,
+            signal,
+            aspectRatio: '1:1'
+          })
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          setSteps(3, taskMode === 'icon' ? 'Placing icon…' : 'Placing image…')
+          const placed = await placeImageOnCanvas(svgEditor, imgResult.dataUrl, {
+            mode,
+            icon: taskMode === 'icon',
+            maxSize: taskMode === 'icon' ? 160 : 420
+          })
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          const note = placed.ok
+            ? (taskMode === 'icon' ? '✓ Icon placed on canvas (transparent bg).' : '✓ Image placed on canvas.')
+            : (placed.message || 'Could not place image.')
+          history.push({
+            role: 'model',
+            text: imgResult.text || note,
+            parts: [{ text: imgResult.text || note }]
+          })
+          appendMsg('model', imgResult.text || note)
+          pushActionHistory({
+            prompt: displayText,
+            mode: taskMode,
+            note: placed.ok ? note : 'Place failed'
+          })
+          setSteps(4)
+          setStatus(placed.ok
+            ? (taskMode === 'icon' ? t(svgEditor, 'appliedIcon') : t(svgEditor, 'appliedImage'))
+            : (placed.message || t(svgEditor, 'emptyImage')), !placed.ok)
+          return
+        }
+
         const res = svgCanvas.getResolution?.() || { w: 640, h: 480 }
+        const effectiveMode = editSelection ? 'append' : mode
         const systemInstruction = buildSystemPrompt({
           w: Math.round(res.w) || 640,
           h: Math.round(res.h) || 480,
-          mode,
-          includeCanvas,
-          canvasSvg: includeCanvas ? svgCanvas.getSvgString() : '',
-          hasImages: imagesSnapshot.length > 0
+          mode: effectiveMode,
+          includeCanvas: editSelection ? false : includeCanvas,
+          canvasSvg: (!editSelection && includeCanvas) ? svgCanvas.getSvgString() : '',
+          hasImages: imagesSnapshot.length > 0,
+          selectionSvg: selectionSvg || undefined
         })
         const contents = compareOn
           ? [{ role: 'user', parts: userParts }]
           : buildContentsForPrompt(false, userParts)
         const labelsById = Object.fromEntries(GEMINI_MODELS.map((m) => [m.id, m.label]))
 
+        setSteps(1)
         if (compareOn) {
+          setSteps(2, `${compareIds.length} models`)
           const results = await compareGeminiModels({
             apiKey,
             modelIds: compareIds,
             contents,
             systemInstruction,
-            labelsById
+            labelsById,
+            signal
           })
-          renderCompareResults(results, mode)
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          renderCompareResults(results, effectiveMode)
           const okCount = results.filter((r) => r.ok && r.svg).length
+          setSteps(4)
           setStatus(t(svgEditor, 'compareDone')
             .replace('{{ok}}', String(okCount))
             .replace('{{n}}', String(results.length)))
+          pushActionHistory({
+            prompt: displayText,
+            mode: effectiveMode,
+            note: `Compare ${okCount}/${results.length} SVG`
+          })
           return
         }
 
+        setSteps(2, model)
         const reply = await generateGeminiText({
           apiKey,
           model,
           contents,
-          systemInstruction
+          systemInstruction,
+          signal
         })
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
         const svg = extractSvgFromText(reply)
         const talk = conversationalTextFromReply(reply, svg)
 
         if (svg) {
-          const applied = applyOne(svg, mode)
+          setSteps(3)
+          const applied = await applyOne(svg, effectiveMode, { editSelection, signal })
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
           history.push({
             role: 'model',
             text: compactModelHistory(reply, svg, applied),
             parts: [{ text: compactModelHistory(reply, svg, applied) }]
           })
-          appendMsg('model', talk || (applied ? '✓ Drawn on the canvas.' : 'SVG returned but could not apply.'))
+          appendMsg('model', talk || (applied
+            ? (editSelection ? '✓ Updated selection.' : '✓ Drawn on the canvas.')
+            : 'SVG returned but could not apply.'))
+          pushActionHistory({
+            prompt: displayText,
+            mode: editSelection ? 'edit-selection' : effectiveMode,
+            svg: applied ? svg : undefined,
+            note: applied
+              ? (editSelection ? 'Edited selection' : 'Drawn on canvas')
+              : 'Apply failed'
+          })
+          setSteps(4)
           if (!applied) {
             setStatus(t(svgEditor, 'emptySvg'), true)
           }
@@ -392,15 +683,28 @@ export default {
           parts: [{ text: reply.slice(0, 8000) }]
         })
         appendMsg('model', talk || reply.slice(0, 2000))
+        pushActionHistory({
+          prompt: displayText,
+          mode: 'chat',
+          note: 'Reply only (no SVG)'
+        })
+        setSteps(4)
         setStatus(t(svgEditor, 'chatOk'))
       } catch (err) {
+        if (err?.name === 'AbortError' || signal.aborted) {
+          appendMsg('model', t(svgEditor, 'stopped'))
+          setStatus(t(svgEditor, 'stopped'))
+          hideSteps()
+          return
+        }
         const msg = err?.message || String(err)
         appendMsg('model', `${t(svgEditor, 'errorPrefix')}: ${msg}`)
         setStatus(msg, true)
+        hideSteps()
       } finally {
-        busy = false
-        const sendBtn = $id('ai_chat_send')
-        if (sendBtn) sendBtn.disabled = false
+        activeAbort = null
+        setBusyUi(false)
+        setTimeout(hideSteps, 1200)
       }
     }
 
@@ -410,14 +714,17 @@ export default {
         setStatus(t(svgEditor, 'needKey'), true)
         return
       }
+      const taskMode = $id('ai_task_mode')?.value || getTaskMode()
+      const isRaster = taskMode === 'image' || taskMode === 'icon'
       setStatus(t(svgEditor, 'refreshingModels'))
       try {
-        const remote = await listGeminiModels(apiKey)
+        const remote = await listGeminiModels(apiKey, { includeImage: isRaster })
         const remoteIds = new Set(remote.map((m) => m.id))
         const sel = $id('ai_model')
-        const preferred = GEMINI_MODELS.filter((m) => remoteIds.has(m.id))
+        const catalog = isRaster ? GEMINI_IMAGE_MODELS : GEMINI_MODELS
+        const preferred = catalog.filter((m) => remoteIds.has(m.id))
         const extras = remote
-          .filter((m) => !GEMINI_MODELS.some((c) => c.id === m.id))
+          .filter((m) => !catalog.some((c) => c.id === m.id))
           .filter((m) => /gemini/i.test(m.id))
           .slice(0, 12)
           .map((m) => ({ id: m.id, label: m.displayName || m.id }))
@@ -431,7 +738,7 @@ export default {
             opt.textContent = `${m.label} ✓`
             sel.appendChild(opt)
           })
-          GEMINI_MODELS.filter((m) => !remoteIds.has(m.id)).forEach((m) => {
+          catalog.filter((m) => !remoteIds.has(m.id)).forEach((m) => {
             const opt = document.createElement('option')
             opt.value = m.id
             opt.textContent = `${m.label} (not listed)`
@@ -445,6 +752,8 @@ export default {
           })
           if ([...sel.options].some((o) => o.value === current)) sel.value = current
           else if (preferred[0]) sel.value = preferred[0].id
+          if (isRaster) localStorage.setItem(LS_IMAGE_MODEL, sel.value)
+          else localStorage.setItem(LS_MODEL, sel.value)
         }
 
         // Update compare checkboxes availability hints
@@ -514,6 +823,16 @@ export default {
                 <select id="ai_model">${modelOptions}</select>
               </label>
             </div>
+            <label class="ai_field">
+              <span>${t(svgEditor, 'taskLabel')}</span>
+              <select id="ai_task_mode">
+                <option value="draw">${t(svgEditor, 'taskDraw')}</option>
+                <option value="image">${t(svgEditor, 'taskImage')}</option>
+                <option value="icon">${t(svgEditor, 'taskIcon')}</option>
+              </select>
+            </label>
+            <p class="ai_hint" id="ai_task_hint">${t(svgEditor, 'taskHint')}</p>
+            <div id="ai_compare_wrap">
             <label class="ai_check">
               <input type="checkbox" id="ai_compare_on" />
               <span>${t(svgEditor, 'compareLabel')}</span>
@@ -522,6 +841,7 @@ export default {
             <div id="ai_compare_models" class="ai_compare_models" style="display:none">
               ${compareChecks}
             </div>
+            </div>
             <label class="ai_field">
               <span>${t(svgEditor, 'modeLabel')}</span>
               <select id="ai_draw_mode">
@@ -529,12 +849,26 @@ export default {
                 <option value="replace">${t(svgEditor, 'modeReplace')}</option>
               </select>
             </label>
+            <div id="ai_draw_options">
             <label class="ai_check">
               <input type="checkbox" id="ai_include_canvas" checked />
               <span>${t(svgEditor, 'includeCanvas')}</span>
             </label>
+            <label class="ai_check">
+              <input type="checkbox" id="ai_edit_selection" />
+              <span>${t(svgEditor, 'editSelection')}</span>
+            </label>
+            <p class="ai_hint">${t(svgEditor, 'editSelectionHint')}</p>
+            </div>
+            <div class="ai_row">
+              <button type="button" id="ai_history_toggle" class="ai_btn secondary">${t(svgEditor, 'showHistory')}</button>
+            </div>
+            <div id="ai_history_panel" class="ai_history_panel" style="display:none">
+              <div id="ai_history_list" class="ai_history_list"></div>
+            </div>
           </div>
           <div id="ai_chat_log" class="ai_chat_log"></div>
+          <div id="ai_steps" class="ai_steps" style="display:none" aria-live="polite"></div>
           <div id="ai_chat_status" class="ai_chat_status"></div>
           <div class="ai_chat_composer">
             <div id="ai_attach_strip" class="ai_attach_strip" style="display:none"></div>
@@ -543,6 +877,7 @@ export default {
             <div class="ai_chat_actions">
               <button type="button" id="ai_chat_attach" class="ai_btn secondary" title="${t(svgEditor, 'attachImagesTitle')}">${t(svgEditor, 'attachImages')}</button>
               <button type="button" id="ai_chat_clear" class="ai_btn secondary">${t(svgEditor, 'clearChat')}</button>
+              <button type="button" id="ai_chat_stop" class="ai_btn danger" style="display:none">${t(svgEditor, 'stop')}</button>
               <button type="button" id="ai_chat_send" class="ai_btn primary">${t(svgEditor, 'send')}</button>
             </div>
             <p class="ai_hint ai_attach_hint">${t(svgEditor, 'attachHint')}</p>
@@ -554,8 +889,9 @@ export default {
 
         const keyInput = $id('ai_api_key')
         if (keyInput) keyInput.value = getApiKey()
-        const modelSel = $id('ai_model')
-        if (modelSel) modelSel.value = getModel()
+        const taskSel = $id('ai_task_mode')
+        if (taskSel) taskSel.value = getTaskMode()
+        syncTaskModeUi()
         const compareToggle = $id('ai_compare_on')
         if (compareToggle) compareToggle.checked = getCompareOn()
         syncCompareUi()
@@ -566,6 +902,7 @@ export default {
         })
         $click($id('ai_chat_close'), () => setOpen(false))
         $click($id('ai_chat_send'), () => { send() })
+        $click($id('ai_chat_stop'), () => { stopGeneration() })
         $click($id('ai_refresh_models'), () => { refreshModelsFromApi() })
         $click($id('ai_chat_attach'), () => $id('ai_image_input')?.click())
         $id('ai_image_input')?.addEventListener('change', (e) => {
@@ -574,22 +911,39 @@ export default {
           e.target.value = ''
         })
         $click($id('ai_chat_clear'), () => {
+          if (busy) stopGeneration()
           history = []
           compareSvgCache.clear()
           clearPendingImages()
           const log = $id('ai_chat_log')
           if (log) log.innerHTML = ''
           setStatus('')
+          hideSteps()
         })
+        $click($id('ai_history_toggle'), () => {
+          const panel = $id('ai_history_panel')
+          if (!panel) return
+          const open = panel.style.display === 'none'
+          panel.style.display = open ? 'block' : 'none'
+          $id('ai_history_toggle').textContent = open
+            ? t(svgEditor, 'hideHistory')
+            : t(svgEditor, 'showHistory')
+          if (open) renderActionHistory()
+        })
+        renderActionHistory()
 
+        taskSel?.addEventListener('change', syncTaskModeUi)
         compareToggle?.addEventListener('change', syncCompareUi)
         $id('ai_compare_models')?.addEventListener('change', persistCompareModels)
 
         keyInput?.addEventListener('change', () => {
           localStorage.setItem(LS_KEY, keyInput.value.trim())
         })
-        modelSel?.addEventListener('change', () => {
-          localStorage.setItem(LS_MODEL, modelSel.value)
+        $id('ai_model')?.addEventListener('change', () => {
+          const task = $id('ai_task_mode')?.value || 'draw'
+          const val = $id('ai_model').value
+          if (task === 'image' || task === 'icon') localStorage.setItem(LS_IMAGE_MODEL, val)
+          else localStorage.setItem(LS_MODEL, val)
         })
 
         const composer = panel.querySelector('.ai_chat_composer')

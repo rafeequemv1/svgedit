@@ -21,8 +21,16 @@ import {
 } from './corner-radius.js'
 
 let svgCanvas
-// change radius if touch screen
-const gripRadius = window.ontouchstart ? 10 : 4
+// Figma-like light selection chrome (constant screen size via vector-effect)
+const SELECT_BLUE = '#0D99FF'
+const gripSize = window.ontouchstart ? 12 : 8
+const gripRadius = gripSize / 2
+const gripStroke = {
+  fill: '#ffffff',
+  stroke: SELECT_BLUE,
+  'stroke-width': 1,
+  'vector-effect': 'non-scaling-stroke'
+}
 
 /**
  * Private singleton manager for selector state
@@ -80,9 +88,10 @@ export class Selector {
       attr: {
         id: `selectedBox${this.id}`,
         fill: 'none',
-        stroke: '#22C',
+        stroke: SELECT_BLUE,
         'stroke-width': '1',
-        'stroke-dasharray': '5,5',
+        'stroke-linejoin': 'round',
+        'vector-effect': 'non-scaling-stroke',
         // need to specify this so that the rect is not selectable
         style: 'pointer-events:none'
       }
@@ -267,8 +276,9 @@ export class Selector {
       selectedBox.setAttribute('d', dstr)
       this.selectorGroup.setAttribute('transform', xform)
       Object.entries(this.gripCoords).forEach(([dir, coords]) => {
-        selectedGrips[dir].setAttribute('cx', coords[0])
-        selectedGrips[dir].setAttribute('cy', coords[1])
+        const half = gripSize / 2
+        selectedGrips[dir].setAttribute('x', coords[0] - half)
+        selectedGrips[dir].setAttribute('y', coords[1] - half)
       })
 
       // Lines use endpoint grips instead of box-resize handles
@@ -460,10 +470,8 @@ export class SelectorManager {
         element: 'circle',
         attr: {
           id: `selectorGrip_corner_${idx}`,
-          fill: '#fff',
-          stroke: '#22C',
-          'stroke-width': 1.5,
-          r: gripRadius,
+          ...gripStroke,
+          r: gripRadius - 0.5,
           display: 'none',
           style: 'cursor:pointer',
           'pointer-events': 'all'
@@ -512,20 +520,19 @@ export class SelectorManager {
     this.selectors = []
     this.rubberBandBox = null
 
-    // add the corner grips
+    // add the corner grips (Figma-style white squares, blue edge)
     Object.keys(this.selectorGrips).forEach((dir) => {
       const grip = svgCanvas.createSVGElement({
-        element: 'circle',
+        element: 'rect',
         attr: {
           id: `selectorGrip_resize_${dir}`,
-          fill: '#22C',
-          r: gripRadius,
+          ...gripStroke,
+          width: gripSize,
+          height: gripSize,
+          rx: 1,
+          ry: 1,
           style: `cursor:${dir}-resize`,
-          // This expands the mouse-able area of the grips making them
-          // easier to grab with the mouse.
-          // This works in Opera and WebKit, but does not work in Firefox
-          // see https://bugzilla.mozilla.org/show_bug.cgi?id=500174
-          'stroke-width': 2,
+          // Expand hit area without thickening the visible stroke
           'pointer-events': 'all'
         }
       })
@@ -542,8 +549,9 @@ export class SelectorManager {
         element: 'line',
         attr: {
           id: ('selectorGrip_rotateconnector'),
-          stroke: '#22C',
-          'stroke-width': '1'
+          stroke: SELECT_BLUE,
+          'stroke-width': '1',
+          'vector-effect': 'non-scaling-stroke'
         }
       })
     this.selectorGripsGroup.append(this.rotateGripConnector)
@@ -553,10 +561,8 @@ export class SelectorManager {
         element: 'circle',
         attr: {
           id: 'selectorGrip_rotate',
-          fill: 'lime',
+          ...gripStroke,
           r: gripRadius,
-          stroke: '#22C',
-          'stroke-width': 2,
           style: `cursor:url(${svgCanvas.curConfig.imgPath}/rotate.svg) 12 12, auto;`
         }
       })
@@ -572,10 +578,8 @@ export class SelectorManager {
         element: 'circle',
         attr: {
           id: `selectorGrip_line_${end}`,
-          fill: '#fff',
-          stroke: '#22C',
-          'stroke-width': 2,
-          r: gripRadius + 0.5,
+          ...gripStroke,
+          r: gripRadius,
           display: 'none',
           style: 'cursor:move',
           'pointer-events': 'all'
@@ -692,10 +696,11 @@ export class SelectorManager {
           element: 'rect',
           attr: {
             id: 'selectorRubberBand',
-            fill: '#22C',
-            'fill-opacity': 0.15,
-            stroke: '#22C',
-            'stroke-width': 0.5,
+            fill: SELECT_BLUE,
+            'fill-opacity': 0.08,
+            stroke: SELECT_BLUE,
+            'stroke-width': 1,
+            'vector-effect': 'non-scaling-stroke',
             display: 'none',
             style: 'pointer-events:none'
           }
