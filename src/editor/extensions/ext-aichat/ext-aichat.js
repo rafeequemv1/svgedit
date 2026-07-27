@@ -18,7 +18,7 @@ import {
   compareGeminiModels,
   listGeminiModels
 } from './gemini.js'
-import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, formatUserFacingSvgError, looksLikeTruncatedSvg, buildContinuityNote, looksLikeEditIntent, summarizeSelectionSvg } from './apply-svg.js'
+import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, formatUserFacingSvgError, looksLikeTruncatedSvg, buildContinuityNote, looksLikeEditIntent, looksLikeGenerativeIntent, buildGenerativeIntentContext, summarizeSelectionSvg } from './apply-svg.js'
 import {
   applySvgToCanvasAnimated,
   replaceSelectionWithSvg,
@@ -748,8 +748,17 @@ export default {
       const { signal } = activeAbort
       setBusyUi(true)
       input.value = ''
+      const generative = imagesSnapshot.length > 0 || looksLikeGenerativeIntent(prompt, {
+        taskMode,
+        editSelection,
+        hasSelection: !!liveSelectionSvg,
+        hasImages: imagesSnapshot.length > 0,
+        ...buildGenerativeIntentContext(history, actionHistory)
+      })
       const userParts = buildUserParts(
-        isRaster ? buildRasterPrompt(prompt, taskMode === 'icon' ? 'icon' : 'image') : prompt,
+        isRaster && generative
+          ? buildRasterPrompt(prompt, taskMode === 'icon' ? 'icon' : 'image')
+          : prompt,
         imagesSnapshot
       )
       const displayText = prompt || (imagesSnapshot.length
@@ -780,7 +789,50 @@ export default {
         ? t(svgEditor, 'comparing').replace('{{n}}', String(compareIds.length))
         : t(svgEditor, 'stepUnderstanding'))
 
+      const resEarly = svgCanvas.getResolution?.() || { w: 640, h: 480 }
+      const canvasSizeEarly = {
+        w: Math.round(resEarly.w) || 640,
+        h: Math.round(resEarly.h) || 480
+      }
+
       try {
+        // Greetings / Q&A — text only, no Max / image / canvas work
+        if (!generative && !compareOn) {
+          setSteps(1, 'Chat')
+          const systemInstruction = buildSystemPrompt({
+            w: canvasSizeEarly.w,
+            h: canvasSizeEarly.h,
+            mode,
+            chatOnly: true,
+            taskMode,
+            continuityNote: buildContinuityNote(history, actionHistory[0] || null)
+          })
+          const contents = buildContentsForPrompt(false, userParts)
+          const reply = await generateGeminiText({
+            apiKey,
+            model: isRaster || isMax ? resolveActiveModel($id('ai_model')?.value || getModel()) : model,
+            contents,
+            systemInstruction,
+            signal
+          })
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          const talk = conversationalTextFromReply(reply, null)
+          history.push({
+            role: 'model',
+            text: (talk || reply).slice(0, 8000),
+            parts: [{ text: (talk || reply).slice(0, 8000) }]
+          })
+          appendMsg('model', talk || reply)
+          pushActionHistory({
+            prompt: displayText,
+            mode: 'chat',
+            note: 'Reply only (no generation)'
+          })
+          setSteps(4)
+          setStatus(t(svgEditor, 'chatOk'))
+          return
+        }
+
         // ——— Max mode: plan then build (SVG + BioRender icons) ———
         if (isMax) {
           setSteps(0, 'Max')
@@ -892,7 +944,7 @@ export default {
         }
         const effectiveMode = editSelection ? 'append' : mode
         const useBrushes = getUseBrushes()
-        const toolPlan = (!compareOn && !editSelection)
+        const toolPlan = (!compareOn && !editSelection && generative)
           ? resolveToolPlan(prompt || displayText, canvasSize)
           : { placements: [], svgHint: '', activate: null, note: '' }
 

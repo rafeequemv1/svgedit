@@ -417,6 +417,110 @@ export function looksLikeEditIntent (prompt) {
   )
 }
 
+const CHITCHAT_RE = /^(?:hi|hello|hey|hiya|yo|sup|thanks|thank you|thx|ok|okay|k|bye|goodbye|cya|good\s*(?:morning|afternoon|evening)|how are you|what'?s up|nm|lol)\s*[!?.…]*$/i
+const META_HELP_RE = /^(?:help|what can you do|who are you|how does this work)\s*[!?.]*$/i
+const AFFIRM_RE = /^(?:yes|yeah|yep|yup|sure|ok|okay|go ahead|do it|please do|sounds good|that works|let'?s do it|proceed)\s*[!?.…]*$/i
+const DECLINE_RE = /^(?:no|nope|nah|cancel|stop|never mind|nevermind|don'?t|skip)\s*[!?.…]*$/i
+const DRAW_VERBS_RE = /\b(draw|create|make|build|generate|design|illustrate|diagram|sketch|compose|render|depict|plot|chart|flowchart|infographic|schematic|poster|slide|graphical abstract|icon of|image of|show me a|add a|add an|put a|make me a|can you (?:draw|create|make|build|generate)|please (?:draw|create|make))\b/i
+const FOLLOWUP_EDIT_RE = /\b(add|remove|delete|label|title|caption|arrow|fix|adjust|tweak|update|change|move|resize|recolor|recolour|thicker|thinner|bigger|smaller|more|less|also|another|next|instead|try again|redo|regenerate|continue)\b/i
+
+/**
+ * @param {string} text
+ */
+export function assistantOfferedGeneration (text) {
+  const t = String(text || '').toLowerCase()
+  if (!t) return false
+  return (
+    /\b(what would you like|describe what|tell me what|which .{0,24} (?:draw|build|create|generate)|ready to (?:draw|build|create)|shall i (?:draw|build|create|generate)|want me to (?:draw|build|create|generate)|what (?:poster|abstract|icon|image|figure))\b/.test(t) ||
+    /\b(graphical abstract|poster|slide|icon|image).{0,48}\?\s*$/m.test(t) ||
+    (t.includes('?') && /\b(build|create|generate|draw)\b/.test(t))
+  )
+}
+
+/**
+ * Context from prior chat turns for follow-up intent.
+ * @param {Array<{role:string,text?:string}>} history
+ * @param {Array<{mode?:string,note?:string}>} [actionHistory]
+ */
+export function buildGenerativeIntentContext (history, actionHistory = []) {
+  let lastModelText = ''
+  for (let i = (history || []).length - 1; i >= 0; i--) {
+    if (history[i].role === 'model') {
+      lastModelText = String(history[i].text || '')
+      break
+    }
+  }
+  const recentCanvasWork = (actionHistory || []).slice(0, 4).some((h) =>
+    h?.mode && h.mode !== 'chat' && h.note && !/reply only|no generation|chat/i.test(h.note)
+  )
+  return {
+    lastModelText,
+    lastModelOfferedGeneration: assistantOfferedGeneration(lastModelText),
+    recentCanvasWork
+  }
+}
+
+/**
+ * True when the user wants canvas work (draw / image / Max), not just chat.
+ * @param {string} prompt
+ * @param {{ taskMode?: string, editSelection?: boolean, hasSelection?: boolean, hasImages?: boolean, lastModelText?: string, lastModelOfferedGeneration?: boolean, recentCanvasWork?: boolean }} [opts]
+ */
+export function looksLikeGenerativeIntent (prompt, opts = {}) {
+  const text = String(prompt || '').trim()
+  if (opts.hasImages) return true
+  if (!text) return false
+  if (DECLINE_RE.test(text)) return false
+  if (opts.editSelection && looksLikeEditIntent(text)) return true
+  if (AFFIRM_RE.test(text) && opts.lastModelOfferedGeneration) return true
+  if (CHITCHAT_RE.test(text) || META_HELP_RE.test(text)) return false
+
+  const p = text.toLowerCase()
+  if (opts.lastModelOfferedGeneration) {
+    if (DRAW_VERBS_RE.test(p)) return true
+    if (text.length >= 14 && !/^(how|what|why|when|where|who|tell me about|explain)\b/i.test(text)) return true
+  }
+  if (opts.recentCanvasWork && FOLLOWUP_EDIT_RE.test(p) && text.length >= 6) return true
+  if (DRAW_VERBS_RE.test(p)) return true
+  if (opts.hasSelection && looksLikeEditIntent(text)) return true
+
+  const task = opts.taskMode || 'draw'
+  if (task === 'max') {
+    if (/\b(graphical abstract|poster|slide|figure|infographic|composite|panel|abstract)\b/i.test(text)) return true
+    if (text.length >= 22 && !/^(how|what|why|when|where|can you explain|tell me)\b/i.test(text)) return true
+    return false
+  }
+  if (task === 'image' || task === 'icon') {
+    if (/\b(icon|image|picture|illustration|render)\b/i.test(text) && text.length >= 10) return true
+    if (text.length >= 16 && !/^(how|what|why|explain)\b/i.test(text)) return true
+    return false
+  }
+  if (text.length >= 18 && /\b(nanoparticle|dna|membrane|pathway|molecule|cell|protein|enzyme|hydrogel|lipid|virus|crispr|composite|abstract)\b/i.test(text)) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Extra system prompt when the host blocks generative actions (greetings, Q&A).
+ * @param {string} [taskMode]
+ */
+export function buildChatOnlyNote (taskMode = 'draw') {
+  const mode = String(taskMode || 'draw')
+  const lines = [
+    '# CHAT ONLY',
+    'The user sent a greeting, question, or casual chat — NOT a request to draw, generate an image, or run Max composition.',
+    'Reply in plain text only. Do NOT output SVG, ```svg fences, ```tools blocks, JSON layout plans, or image prompts.'
+  ]
+  if (mode === 'max') {
+    lines.push('You are in Max (poster / graphical abstract) mode. Greet briefly and ask what scientific poster or abstract to build.')
+  } else if (mode === 'image' || mode === 'icon') {
+    lines.push(`You are in ${mode} generation mode. Ask what scientific ${mode === 'icon' ? 'icon' : 'image'} they want.`)
+  } else {
+    lines.push('Answer helpfully about SVGEdit or their question. Invite them to describe what to draw when ready.')
+  }
+  return lines.join('\n')
+}
+
 /**
  * Brief selection summary (ids/tags) for continuity without full markup.
  * @param {string} selectionSvg
@@ -435,13 +539,23 @@ import { buildEditorToolsPromptSection } from './place-tools.js'
 
 /**
  * Build system prompt: conversational assistant that knows every tool and draws when asked.
- * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string, useBrushes?: boolean }} ctx
+ * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string, useBrushes?: boolean, chatOnly?: boolean, taskMode?: string }} ctx
  */
 export function buildSystemPrompt (ctx) {
   const {
     w, h, mode, includeCanvas, canvasSvg, hasImages, selectionSvg, selectionSummary, continuityNote,
-    useBrushes = false
+    useBrushes = false,
+    chatOnly = false,
+    taskMode = 'draw'
   } = ctx
+
+  if (chatOnly) {
+    let prompt = `You are the built-in AI assistant for SVGEdit (LabCanvas-style scientific SVG editor).
+${buildChatOnlyNote(taskMode)}
+`
+    if (continuityNote) prompt += `\n${continuityNote}\n`
+    return prompt
+  }
 
   let prompt = `You are the built-in AI assistant for SVGEdit (LabCanvas-style scientific SVG editor).
 You are conversational: chat naturally, retain prior turns, ask clarifying questions when needed, and explain editor tools when asked.

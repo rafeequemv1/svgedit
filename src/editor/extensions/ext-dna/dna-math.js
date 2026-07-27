@@ -412,7 +412,7 @@ const sampleHelix = (sampler, hp, preview = false) => {
   const pathLength = sampler.pathLength
   if (pathLength <= 0) return { pathLength: 0, samples: [] }
   const step = preview
-    ? Math.max(14, hp.twistPitch / 5)
+    ? Math.max(22, hp.twistPitch / 3.5)
     : Math.max(3, Math.min(8, hp.twistPitch / 22))
   const samples = []
   for (let s = 0; s <= pathLength; s += step) {

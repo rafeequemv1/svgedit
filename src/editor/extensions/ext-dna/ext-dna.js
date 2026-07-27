@@ -295,8 +295,48 @@ const emitDnaSvg = (group, geom) => {
 
 }
 
-/** Min ms between live helix rebuilds while dragging spine nodes (pathedit). */
-const LIVE_SPINE_REGEN_MS = 85
+/** Coalesce live spine regen to animation frames (no extra ms throttle). */
+const LIVE_SPINE_REGEN_MS = 0
+
+/**
+ * Update existing helix path `d` attrs in place — avoids DOM teardown during drag.
+ * @param {SVGElement} visuals
+ * @param {object} geom
+ * @returns {boolean}
+ */
+const patchDnaVisualsInPlace = (visuals, geom) => {
+  if (!visuals || !geom || geom.empty) return false
+  const setD = (role, d) => {
+    if (!d) return true
+    const node = visuals.querySelector(`[data-role="${role}"]`)
+    if (!node) return false
+    node.setAttribute('d', d)
+    return true
+  }
+  if (geom.params?.styleMode === 'molecular') {
+    const m = geom.molecular
+    if (!setD('mol-bond-back', m.molBondsBack)) return false
+    if (!setD('mol-bond-front', m.molBondsFront)) return false
+    if (!setD('mol-atoms', m.molAtoms)) return false
+    if (!setD('mol-mids', m.molMids)) return false
+  }
+  const c = geom.cartoon
+  if (!setD('strand-back-a', c.backA)) return false
+  if (!setD('strand-back-b', c.backB)) return false
+  if (!setD('strand-front-a', c.frontA)) return false
+  if (!setD('strand-front-b', c.frontB)) return false
+  const rungNode = visuals.querySelector('[data-role="rungs"]')
+  if (rungNode && c.rungs?.length) {
+    let d = ''
+    c.rungs.forEach((r) => {
+      d += `M${r.x1.toFixed(2)},${r.y1.toFixed(2)}L${r.x2.toFixed(2)},${r.y2.toFixed(2)}`
+    })
+    rungNode.setAttribute('d', d)
+  }
+  const hit = visuals.querySelector('[data-role="hit"]')
+  if (hit && geom.hitD) hit.setAttribute('d', geom.hitD)
+  return true
+}
 
 /**
  * Build / replace only the helix visuals group. Never touches the spine path
@@ -322,15 +362,22 @@ const rebuildDnaVisuals = (group, attrs, spineD, opts = {}) => {
   const spine = group.querySelector(':scope > path[data-role="spine"]') ||
     group.querySelector('path[data-role="spine"]')
 
-  // Drop previous visuals / preview, keep spine
-  Array.from(group.childNodes).forEach((ch) => {
-    if (ch !== spine) ch.remove()
-  })
-
   const geom = computeDnaGeometry(
     spineD ? { spineD, points: attrs.points } : attrs.points,
     { ...attrs, livePreview: !!opts.livePreview }
   )
+
+  if (opts.livePreview) {
+    const visuals = group.querySelector('[data-role="dna-visuals"]')
+    if (visuals && patchDnaVisualsInPlace(visuals, geom)) {
+      return true
+    }
+  }
+
+  // Drop previous visuals / preview, keep spine
+  Array.from(group.childNodes).forEach((ch) => {
+    if (ch !== spine) ch.remove()
+  })
 
   if (geom.empty) {
     if (attrs.points?.length >= 1) {
@@ -494,6 +541,7 @@ export default {
     let spineEditLastAt = 0
     let spineEditLock = false
     let lastLiveSpineD = ''
+    let spineEditQueued = false
 
     const nextId = () => svgCanvas.getNextId()
 
@@ -603,15 +651,15 @@ export default {
      * Throttled + low-detail preview during drag; full quality on mouse-up.
      */
     const liveRegenFromSpine = (group, spine, { finalQuality = false } = {}) => {
-      if (!group || !spine || regeneratingVisuals) return
+      if (!group || !spine) return
 
       const runRebuild = () => {
         spineEditRaf = 0
+        spineEditQueued = false
         const dNow = spine.getAttribute('d') || ''
         if (!dNow || (!finalQuality && dNow === lastLiveSpineD)) return
         lastLiveSpineD = dNow
         spineEditLastAt = performance.now()
-        regeneratingVisuals = true
         try {
           const attrs = readDnaAttrs(group)
           attrs.spineD = dNow
@@ -620,9 +668,18 @@ export default {
             editingSpine: true,
             livePreview: !finalQuality
           })
-        } finally {
-          regeneratingVisuals = false
+        } catch (_) { /* keep spine editable */ }
+      }
+
+      const schedule = () => {
+        if (spineEditRaf) {
+          spineEditQueued = true
+          return
         }
+        spineEditRaf = requestAnimationFrame(() => {
+          runRebuild()
+          if (spineEditQueued) schedule()
+        })
       }
 
       if (finalQuality) {
@@ -634,29 +691,30 @@ export default {
           cancelAnimationFrame(spineEditRaf)
           spineEditRaf = 0
         }
+        spineEditQueued = false
         runRebuild()
         return
       }
 
-      const now = performance.now()
-      if (now - spineEditLastAt >= LIVE_SPINE_REGEN_MS) {
-        if (spineEditTrailing) {
-          clearTimeout(spineEditTrailing)
+      if (LIVE_SPINE_REGEN_MS > 0) {
+        const now = performance.now()
+        if (now - spineEditLastAt >= LIVE_SPINE_REGEN_MS) {
+          if (spineEditTrailing) {
+            clearTimeout(spineEditTrailing)
+            spineEditTrailing = 0
+          }
+          schedule()
+          return
+        }
+        if (spineEditTrailing) clearTimeout(spineEditTrailing)
+        spineEditTrailing = window.setTimeout(() => {
           spineEditTrailing = 0
-        }
-        if (!spineEditRaf) {
-          spineEditRaf = requestAnimationFrame(runRebuild)
-        }
+          schedule()
+        }, LIVE_SPINE_REGEN_MS)
         return
       }
 
-      if (spineEditTrailing) clearTimeout(spineEditTrailing)
-      spineEditTrailing = window.setTimeout(() => {
-        spineEditTrailing = 0
-        if (!spineEditRaf) {
-          spineEditRaf = requestAnimationFrame(runRebuild)
-        }
-      }, LIVE_SPINE_REGEN_MS)
+      schedule()
     }
 
     const unwatchSpine = () => {
@@ -997,14 +1055,11 @@ export default {
       },
 
       mouseMove (opts) {
-        // Realtime helix while dragging spine Bézier nodes / handles
+        // Realtime helix while editing spine nodes / Bézier handles
         if (svgCanvas.getCurrentMode() === 'pathedit') {
           const pathObj = svgCanvas.getPathObj?.()
           const pathElem = pathObj?.elem
-          const isSpine = pathElem?.getAttribute?.('data-role') === 'spine'
-          // path.dragging is set while a node/handle is being dragged
-          const dragging = !!(pathObj?.dragging || pathObj?.dragctrl)
-          if (isSpine && dragging) {
+          if (pathElem?.getAttribute?.('data-role') === 'spine') {
             const group = findDnaGroup(pathElem) || editingSpineGroup
             if (group) {
               if (!editingSpineGroup) editingSpineGroup = group
