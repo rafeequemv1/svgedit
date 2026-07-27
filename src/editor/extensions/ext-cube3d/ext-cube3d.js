@@ -62,7 +62,7 @@ const readCubeAttrs = (group) => ({
  * @param {object} [overrides]
  * @returns {void}
  */
-const regenerateCube = (group, overrides = {}) => {
+export const regenerateCube = (group, overrides = {}) => {
   const attrs = { ...readCubeAttrs(group), ...overrides }
   Object.entries({
     'data-cx': attrs.cx,

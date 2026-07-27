@@ -25,6 +25,12 @@ import {
   serializeSelection
 } from './reveal-svg.js'
 import { placeImageOnCanvas, buildRasterPrompt } from './place-image.js'
+import {
+  resolveToolPlan,
+  placeToolsOnCanvas,
+  parseToolsBlockFromReply,
+  activateEditorTool
+} from './place-tools.js'
 import { runMaxMode, formatPlanForChat } from './max-mode.js'
 import {
   blobToGeminiImage,
@@ -877,6 +883,36 @@ export default {
 
         const res = svgCanvas.getResolution?.() || { w: 640, h: 480 }
         const effectiveMode = editSelection ? 'append' : mode
+        const toolPlan = (!compareOn && !editSelection)
+          ? resolveToolPlan(prompt || displayText, {
+            w: Math.round(res.w) || 640,
+            h: Math.round(res.h) || 480
+          })
+          : { placements: [], svgHint: '', activate: null, note: '' }
+
+        if (toolPlan.activate) {
+          activateEditorTool(svgEditor, toolPlan.activate.toolId, toolPlan.activate.mode)
+          appendMsg('model', toolPlan.note || t(svgEditor, 'toolActivated'))
+          history.push({
+            role: 'model',
+            text: toolPlan.note || t(svgEditor, 'toolActivated'),
+            parts: [{ text: toolPlan.note || t(svgEditor, 'toolActivated') }]
+          })
+          setSteps(4)
+          setStatus(toolPlan.note || t(svgEditor, 'toolActivated'))
+          return
+        }
+
+        let toolNote = ''
+        if (toolPlan.placements?.length) {
+          setSteps(2, 'Placing brush…')
+          const placed = placeToolsOnCanvas(svgEditor, toolPlan.placements)
+          if (placed.length) {
+            toolNote = toolPlan.note || `Placed ${placed.length} brush object(s) on canvas.`
+            setStatus(toolNote)
+          }
+        }
+
         const systemInstruction = buildSystemPrompt({
           w: Math.round(res.w) || 640,
           h: Math.round(res.h) || 480,
@@ -889,7 +925,7 @@ export default {
           continuityNote: compareOn
             ? ''
             : buildContinuityNote(history, actionHistory[0] || null)
-        })
+        }) + (toolPlan.svgHint ? `\n\n# Host tool placement\n${toolPlan.svgHint}` : '')
         const contents = compareOn
           ? [{ role: 'user', parts: userParts }]
           : buildContentsForPrompt(false, userParts)
@@ -962,6 +998,11 @@ export default {
         const { reply, svg, talk, applied, diag: replyDiag } = result
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
+        const extraTools = parseToolsBlockFromReply(reply)
+        if (extraTools.length) {
+          placeToolsOnCanvas(svgEditor, extraTools)
+        }
+
         if (svg) {
           setSteps(3)
           history.push({
@@ -969,9 +1010,13 @@ export default {
             text: compactModelHistory(reply, svg, applied.ok),
             parts: [{ text: compactModelHistory(reply, svg, applied.ok) }]
           })
-          const row = appendMsg('model', talk || (applied.ok
+          let msg = talk || (applied.ok
             ? (editSelection ? '✓ Updated selection.' : '✓ Drawn on the canvas.')
-            : 'SVG returned but could not apply.'))
+            : 'SVG returned but could not apply.')
+          if (toolNote && applied.ok) {
+            msg = `${toolNote}\n\n${msg}`
+          }
+          const row = appendMsg('model', msg)
           pushActionHistory({
             prompt: displayText,
             mode: editSelection ? 'edit-selection' : effectiveMode,
@@ -992,6 +1037,23 @@ export default {
               stage: 'apply-after-extract'
             }, { row })
           }
+          return
+        }
+
+        if (!svg && toolNote) {
+          history.push({
+            role: 'model',
+            text: `${toolNote}\n${(talk || '').slice(0, 500)}`,
+            parts: [{ text: `${toolNote}\n${(talk || '').slice(0, 500)}` }]
+          })
+          appendMsg('model', `${toolNote}\n\n${talk || ''}`.trim())
+          pushActionHistory({
+            prompt: displayText,
+            mode: effectiveMode,
+            note: toolNote
+          })
+          setSteps(4)
+          setStatus(toolNote)
           return
         }
 

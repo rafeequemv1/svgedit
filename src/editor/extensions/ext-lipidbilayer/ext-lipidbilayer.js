@@ -89,7 +89,7 @@ const readBilayerAttrs = (group) => ({
  * @param {object} [overrides]
  * @returns {void}
  */
-const regenerateBilayer = (group, overrides = {}) => {
+export const regenerateBilayer = (group, overrides = {}) => {
   const attrs = { ...readBilayerAttrs(group), ...overrides }
   Object.entries({
     'data-x1': attrs.x1,

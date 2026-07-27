@@ -116,7 +116,7 @@ const readHydrogelAttrs = (group) => ({
  * @param {{ previewOnly?: boolean }} [flags]
  * @returns {void}
  */
-const regenerateHydrogel = (group, overrides = {}, flags = {}) => {
+export const regenerateHydrogel = (group, overrides = {}, flags = {}) => {
   const attrs = { ...readHydrogelAttrs(group), ...overrides }
 
   Object.entries({

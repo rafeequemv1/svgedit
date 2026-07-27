@@ -63,6 +63,7 @@ export default {
   askAiEditTitle: 'Open AI chat to edit the selection',
   askAiEditReady: 'Edit selection is on — describe the change.',
   placeholderEditSelection: 'e.g. make it blue, thicken the outline, add a label…',
+  toolActivated: 'DNA helix tool is active — drag on the canvas to draw.',
   emptyImage: 'Could not place the generated image.',
   needKey: 'Paste a Gemini API key first.',
   needSelection: 'Select something on the canvas first (Edit selection is on).',

@@ -71,7 +71,7 @@ const readNanoAttrs = (group) => ({
  * @param {object} [overrides]
  * @returns {void}
  */
-const regenerateNanoparticle = (group, overrides = {}) => {
+export const regenerateNanoparticle = (group, overrides = {}) => {
   const attrs = { ...readNanoAttrs(group), ...overrides }
   Object.entries({
     'data-cx': attrs.cx,

@@ -338,6 +338,8 @@ export function summarizeSelectionSvg (selectionSvg) {
   return uniq.length ? uniq.join(', ') : `selection (${xml.length} chars)`
 }
 
+import { buildEditorToolsPromptSection } from './place-tools.js'
+
 /**
  * Build system prompt: conversational assistant that knows every tool and draws when asked.
  * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string }} ctx
@@ -421,6 +423,8 @@ Diagram layout: margins, aligned columns, no overlapping labels, consistent gaps
 # Personality
 Helpful illustration partner for science and general diagrams: concise, clear. After drawing, offer a quick tip (edit nodes, Pathfinder, Align, or a specialized brush). If they ask for flowchart/mindmap/any SVG art — just draw it.
 `
+
+  prompt += `\n${buildEditorToolsPromptSection()}\n`
 
   if (continuityNote) {
     prompt += `\n${continuityNote}\n`
