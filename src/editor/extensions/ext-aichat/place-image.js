@@ -59,7 +59,7 @@ export function probeImageSize (dataUrl) {
 /**
  * @param {object} svgEditor
  * @param {string} dataUrl
- * @param {{ mode?: string, maxSize?: number, icon?: boolean }} [opts]
+ * @param {{ mode?: string, maxSize?: number, icon?: boolean, x?: number, y?: number, width?: number, height?: number }} [opts]
  * @returns {Promise<{ok:boolean, message?:string, element?:Element}>}
  */
 export async function placeImageOnCanvas (svgEditor, dataUrl, opts = {}) {
@@ -77,9 +77,16 @@ export async function placeImageOnCanvas (svgEditor, dataUrl, opts = {}) {
   }
 
   const size = await probeImageSize(href)
-  const scale = Math.min(1, maxSize / Math.max(size.w, size.h))
-  const w = Math.max(24, Math.round(size.w * scale))
-  const h = Math.max(24, Math.round(size.h * scale))
+  let w
+  let h
+  if (opts.width && opts.height) {
+    w = Math.max(24, Math.round(opts.width))
+    h = Math.max(24, Math.round(opts.height))
+  } else {
+    const scale = Math.min(1, maxSize / Math.max(size.w, size.h))
+    w = Math.max(24, Math.round(size.w * scale))
+    h = Math.max(24, Math.round(size.h * scale))
+  }
 
   if (mode === 'replace') {
     const empty = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.max(w + 40, 640)}" height="${Math.max(h + 40, 480)}"></svg>`
@@ -89,8 +96,12 @@ export async function placeImageOnCanvas (svgEditor, dataUrl, opts = {}) {
   }
 
   const res = svgCanvas.getResolution?.() || { w: 640, h: 480 }
-  const x = Math.max(16, Math.round(((res.w || 640) - w) / 2))
-  const y = Math.max(16, Math.round(((res.h || 480) - h) / 2))
+  const x = opts.x != null
+    ? Math.round(opts.x)
+    : Math.max(16, Math.round(((res.w || 640) - w) / 2))
+  const y = opts.y != null
+    ? Math.round(opts.y)
+    : Math.max(16, Math.round(((res.h || 480) - h) / 2))
 
   const parent = svgCanvas.getCurrentGroup?.() ||
     svgCanvas.getCurrentDrawing?.()?.getCurrentLayer?.()

@@ -24,6 +24,7 @@ import {
   serializeSelection
 } from './reveal-svg.js'
 import { placeImageOnCanvas, buildRasterPrompt } from './place-image.js'
+import { runMaxMode, formatPlanForChat } from './max-mode.js'
 import {
   blobToGeminiImage,
   imageFilesFromDataTransfer,
@@ -171,7 +172,7 @@ export default {
     const getImageModel = () => resolveImageModel(localStorage.getItem(LS_IMAGE_MODEL) || DEFAULT_IMAGE_MODEL)
     const getTaskMode = () => {
       const v = localStorage.getItem(LS_TASK) || 'draw'
-      return (v === 'image' || v === 'icon') ? v : 'draw'
+      return (v === 'image' || v === 'icon' || v === 'max') ? v : 'draw'
     }
     const getCompareOn = () => localStorage.getItem(LS_COMPARE) === '1'
 
@@ -192,7 +193,9 @@ export default {
       const task = $id('ai_task_mode')?.value || 'draw'
       localStorage.setItem(LS_TASK, task)
       const isRaster = task === 'image' || task === 'icon'
+      const isMax = task === 'max'
       const modelSel = $id('ai_model')
+      const maxImgWrap = $id('ai_max_image_wrap')
       if (isRaster) {
         fillModelSelect(modelSel, GEMINI_IMAGE_MODELS, getImageModel())
         localStorage.setItem(LS_IMAGE_MODEL, modelSel?.value || DEFAULT_IMAGE_MODEL)
@@ -200,11 +203,23 @@ export default {
         fillModelSelect(modelSel, GEMINI_MODELS, getModel())
         localStorage.setItem(LS_MODEL, modelSel?.value || DEFAULT_MODEL)
       }
+      if (maxImgWrap) {
+        maxImgWrap.style.display = isMax ? 'block' : 'none'
+        if (isMax) {
+          fillModelSelect($id('ai_max_image_model'), GEMINI_IMAGE_MODELS, getImageModel())
+        }
+      }
+      const modelLabel = $id('ai_model_label')
+      if (modelLabel) {
+        modelLabel.textContent = isMax
+          ? t(svgEditor, 'modelLabelPlan')
+          : t(svgEditor, 'modelLabel')
+      }
       const compareWrap = $id('ai_compare_wrap')
       const drawOpts = $id('ai_draw_options')
-      if (compareWrap) compareWrap.style.display = isRaster ? 'none' : ''
+      if (compareWrap) compareWrap.style.display = (isRaster || isMax) ? 'none' : ''
       if (drawOpts) drawOpts.style.display = isRaster ? 'none' : ''
-      if (isRaster && $id('ai_compare_on')) {
+      if ((isRaster || isMax) && $id('ai_compare_on')) {
         $id('ai_compare_on').checked = false
         syncCompareUi()
       }
@@ -214,7 +229,9 @@ export default {
           ? t(svgEditor, 'placeholderIcon')
           : task === 'image'
             ? t(svgEditor, 'placeholderImage')
-            : t(svgEditor, 'placeholder')
+            : task === 'max'
+              ? t(svgEditor, 'placeholderMax')
+              : t(svgEditor, 'placeholder')
       }
       const hint = $id('ai_task_hint')
       if (hint) {
@@ -222,7 +239,9 @@ export default {
           ? t(svgEditor, 'taskHintIcon')
           : task === 'image'
             ? t(svgEditor, 'taskHintImage')
-            : t(svgEditor, 'taskHint')
+            : task === 'max'
+              ? t(svgEditor, 'taskHintMax')
+              : t(svgEditor, 'taskHint')
       }
     }
     const getCompareModels = () => {
@@ -474,13 +493,17 @@ export default {
       const apiKey = ($id('ai_api_key')?.value || getApiKey()).trim()
       const taskMode = $id('ai_task_mode')?.value || getTaskMode()
       const isRaster = taskMode === 'image' || taskMode === 'icon'
+      const isMax = taskMode === 'max'
       const model = isRaster
         ? resolveImageModel($id('ai_model')?.value || getImageModel())
         : resolveActiveModel($id('ai_model')?.value || getModel())
+      const imageModel = resolveImageModel(
+        $id('ai_max_image_model')?.value || $id('ai_model')?.value || getImageModel()
+      )
       const mode = $id('ai_draw_mode')?.value || 'append'
       const includeCanvas = !!$id('ai_include_canvas')?.checked
-      const compareOn = !isRaster && !!$id('ai_compare_on')?.checked
-      const editSelection = !isRaster && !!$id('ai_edit_selection')?.checked
+      const compareOn = !isRaster && !isMax && !!$id('ai_compare_on')?.checked
+      const editSelection = !isRaster && !isMax && !!$id('ai_edit_selection')?.checked
       const selectionSvg = editSelection ? serializeSelection(svgCanvas) : ''
       const imagesSnapshot = pendingImages.map((p) => ({
         mimeType: p.mimeType,
@@ -504,6 +527,7 @@ export default {
       localStorage.setItem(LS_TASK, taskMode)
       if (isRaster) localStorage.setItem(LS_IMAGE_MODEL, model)
       else localStorage.setItem(LS_MODEL, model)
+      if (isMax) localStorage.setItem(LS_IMAGE_MODEL, imageModel)
       persistCompareModels()
 
       const compareIds = compareOn ? selectedCompareModels() : []
@@ -550,6 +574,58 @@ export default {
         : t(svgEditor, 'stepUnderstanding'))
 
       try {
+        // ——— Max mode: plan then build (SVG + BioRender icons) ———
+        if (isMax) {
+          setSteps(0, 'Max')
+          const result = await runMaxMode({
+            svgEditor,
+            apiKey,
+            textModel: model,
+            imageModel,
+            userPrompt: prompt || displayText,
+            includeCanvas,
+            placeMode: mode,
+            signal,
+            onStep: (idx, detail) => setSteps(idx, detail),
+            onPlan: (plan) => {
+              const planMsg = formatPlanForChat(plan)
+              appendMsg('model', planMsg)
+              history.push({
+                role: 'model',
+                text: planMsg,
+                parts: [{ text: planMsg }]
+              })
+              setSteps(1, plan.title)
+            },
+            onItem: (item, i, n) => {
+              setStatus(t(svgEditor, 'maxBuilding')
+                .replace('{{i}}', String(i + 1))
+                .replace('{{n}}', String(n))
+                .replace('{{id}}', item.id))
+            }
+          })
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          const doneMsg = t(svgEditor, 'maxDone')
+            .replace('{{svg}}', String(result.okSvg))
+            .replace('{{icons}}', String(result.okIcons))
+            .replace('{{fail}}', String(result.fails))
+            .replace('{{total}}', String(result.total))
+          appendMsg('model', doneMsg)
+          history.push({
+            role: 'model',
+            text: doneMsg,
+            parts: [{ text: doneMsg }]
+          })
+          pushActionHistory({
+            prompt: displayText,
+            mode: 'max',
+            note: doneMsg
+          })
+          setSteps(4)
+          setStatus(doneMsg)
+          return
+        }
+
         // ——— Image / Icon generation ———
         if (isRaster) {
           setSteps(1, taskMode === 'icon' ? 'Icon' : 'Image')
@@ -819,8 +895,14 @@ export default {
             </div>
             <div id="ai_model_wrap">
               <label class="ai_field">
-                <span>${t(svgEditor, 'modelLabel')}</span>
+                <span id="ai_model_label">${t(svgEditor, 'modelLabel')}</span>
                 <select id="ai_model">${modelOptions}</select>
+              </label>
+            </div>
+            <div id="ai_max_image_wrap" style="display:none">
+              <label class="ai_field">
+                <span>${t(svgEditor, 'modelLabelIcon')}</span>
+                <select id="ai_max_image_model"></select>
               </label>
             </div>
             <label class="ai_field">
@@ -829,6 +911,7 @@ export default {
                 <option value="draw">${t(svgEditor, 'taskDraw')}</option>
                 <option value="image">${t(svgEditor, 'taskImage')}</option>
                 <option value="icon">${t(svgEditor, 'taskIcon')}</option>
+                <option value="max">${t(svgEditor, 'taskMax')}</option>
               </select>
             </label>
             <p class="ai_hint" id="ai_task_hint">${t(svgEditor, 'taskHint')}</p>
@@ -944,6 +1027,9 @@ export default {
           const val = $id('ai_model').value
           if (task === 'image' || task === 'icon') localStorage.setItem(LS_IMAGE_MODEL, val)
           else localStorage.setItem(LS_MODEL, val)
+        })
+        $id('ai_max_image_model')?.addEventListener('change', () => {
+          localStorage.setItem(LS_IMAGE_MODEL, $id('ai_max_image_model').value)
         })
 
         const composer = panel.querySelector('.ai_chat_composer')
