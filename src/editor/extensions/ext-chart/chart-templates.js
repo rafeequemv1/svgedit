@@ -77,6 +77,52 @@ export const VEGA_MARK_TYPES = [
 /** @type {string[]} */
 export const VEGA_MARK_CATEGORIES = [...new Set(VEGA_MARK_TYPES.map((m) => m.category))]
 
+/** Demo rows for chart previews and quick-create without CSV. */
+export const CHART_SAMPLE_ROWS = [
+  { category: 'A', series: 'S1', value: 24, start: 5, end: 28, size: 12, facet: 'R1' },
+  { category: 'B', series: 'S1', value: 42, start: 12, end: 38, size: 18, facet: 'R1' },
+  { category: 'C', series: 'S1', value: 35, start: 20, end: 55, size: 14, facet: 'R1' },
+  { category: 'A', series: 'S2', value: 18, start: 8, end: 32, size: 10, facet: 'R2' },
+  { category: 'B', series: 'S2', value: 50, start: 15, end: 45, size: 22, facet: 'R2' },
+  { category: 'C', series: 'S2', value: 28, start: 25, end: 60, size: 16, facet: 'R2' }
+]
+
+/**
+ * @param {string} templateId
+ * @param {Array<{columns:string[],rows:object[]}>|null} [csvFiles]
+ */
+export function buildChartSpecForCreate (templateId, csvFiles = null) {
+  const csv = csvFiles?.[0]
+  const columns = csv?.columns?.length
+    ? csv.columns
+    : Object.keys(CHART_SAMPLE_ROWS[0])
+  const spec = buildTemplateSpec(columns, templateId)
+  const meta = VEGA_MARK_TYPES.find((m) => m.id === templateId)
+  spec.title = meta?.label || 'Chart'
+  spec.data = { values: (csv?.rows?.length ? csv.rows : CHART_SAMPLE_ROWS).slice(0, 5000) }
+  return spec
+}
+
+/**
+ * Compact spec for modal thumbnail preview.
+ * @param {string} templateId
+ */
+export function buildPreviewSpec (templateId) {
+  const spec = buildChartSpecForCreate(templateId, null)
+  spec.width = 168
+  spec.height = 104
+  spec.title = null
+  if (spec.config) delete spec.config
+  return spec
+}
+
+/**
+ * @param {string} templateId
+ */
+export function getChartTemplateMeta (templateId) {
+  return VEGA_MARK_TYPES.find((m) => m.id === templateId) || null
+}
+
 /**
  * @param {string[]} columns
  */

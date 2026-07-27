@@ -49,6 +49,9 @@ import {
 } from './csv-attach.js'
 import { applyPlotFromReply, extractPlotSpecFromText } from './apply-plot.js'
 import { getSelectedChartContext } from '../ext-chart/chart-spec.js'
+import { placeChartOnCanvas } from '../ext-chart/chart-spec.js'
+import { buildChartSpecForCreate } from '../ext-chart/chart-templates.js'
+import { openChartPickerModal } from '../ext-chart/chart-picker-modal.js'
 
 const name = 'aichat'
 const LS_KEY = 'svgedit.gemini.apiKey'
@@ -93,7 +96,8 @@ export default {
     let pendingImages = []
     /** @type {Array<{id:string,name:string,columns:string[],rows:object[],rowCount:number}>} */
     let pendingCsv = []
-    let imageIdSeq = 0
+    /** @type {{id:string,label:string}|null} */
+    let chartPickerIntent = null
     /** @type {AbortController|null} */
     let activeAbort = null
     /** @type {Array<{id:string, at:number, prompt:string, mode:string, svg?:string, note:string}>} */
@@ -648,6 +652,68 @@ export default {
       renderAttachStrip()
     }
 
+    const syncChartPill = () => {
+      const pill = $id('ai_chart_pill')
+      if (!pill) return
+      const on = getUsePlots() || !!chartPickerIntent
+      pill.classList.toggle('active', on)
+    }
+
+    const setChartPickerIntent = (id, label) => {
+      chartPickerIntent = id ? { id, label: label || id } : null
+      syncChartPill()
+    }
+
+    const openChartPicker = () => {
+      ensurePlotsForCsv()
+      const plotsToggle = $id('ai_use_plots')
+      if (plotsToggle && !plotsToggle.checked) {
+        plotsToggle.checked = true
+        localStorage.setItem(LS_USE_PLOTS, '1')
+        syncPlotUi()
+      }
+      syncChartPill()
+      openChartPickerModal({
+        csvFiles: pendingCsv,
+        labels: {
+          title: t(svgEditor, 'chartPickerTitle'),
+          subtitle: t(svgEditor, 'chartPickerSubtitle'),
+          create: t(svgEditor, 'chartPickerCreate'),
+          cancel: t(svgEditor, 'close'),
+          search: t(svgEditor, 'chartPickerSearch'),
+          selectHint: t(svgEditor, 'chartPickerSelectHint')
+        },
+        onCreate: async (templateId, meta) => {
+          setChartPickerIntent(templateId, meta?.label)
+          const csvSnapshot = pendingCsv.map((c) => ({
+            columns: c.columns,
+            rows: c.rows
+          }))
+          const res = svgCanvas.getResolution?.() || { w: 640, h: 480 }
+          const canvasSize = { w: Math.round(res.w) || 640, h: Math.round(res.h) || 480 }
+          const mode = $id('ai_draw_mode')?.value || 'append'
+          const spec = buildChartSpecForCreate(templateId, csvSnapshot)
+          try {
+            setStatus(t(svgEditor, 'chartPickerCreating'))
+            const placed = await placeChartOnCanvas(svgEditor, spec, csvSnapshot, mode, canvasSize)
+            if (placed.ok) {
+              setStatus(t(svgEditor, 'appliedPlot'))
+              const input = $id('ai_chat_input')
+              if (input) {
+                input.value = t(svgEditor, 'chartPickerFollowUp')
+                  .replace('{{type}}', meta?.label || templateId)
+                input.focus()
+              }
+            } else {
+              setStatus(placed.message || t(svgEditor, 'plotFailed'), true)
+            }
+          } catch (err) {
+            setStatus(err?.message || t(svgEditor, 'plotFailed'), true)
+          }
+        }
+      })
+    }
+
     const syncPlotUi = () => {
       const on = !!$id('ai_use_plots')?.checked
       const hint = $id('ai_attach_hint')
@@ -655,6 +721,7 @@ export default {
         hint.textContent = t(svgEditor, 'attachHintPlots')
       }
       if (!on && pendingCsv.length) clearPendingCsv()
+      syncChartPill()
     }
 
     const syncSettingsUi = () => {
@@ -886,7 +953,11 @@ export default {
         usePlots,
         ...buildGenerativeIntentContext(history, actionHistory)
       })
-      const promptWithCsv = (prompt || '') + (csvSnapshot.length && usePlots ? formatCsvForPrompt(csvSnapshot) : '')
+      let promptWithCsv = (prompt || '') + (csvSnapshot.length && usePlots ? formatCsvForPrompt(csvSnapshot) : '')
+      if (chartPickerIntent && usePlots) {
+        const note = `[User chart intent: Vega-Lite ${chartPickerIntent.label} (${chartPickerIntent.id}). Prefer this chart type when plotting or refining.]`
+        promptWithCsv = promptWithCsv.trim() ? `${note}\n\n${promptWithCsv}` : note
+      }
       const userParts = buildUserParts(
         isRaster && generative
           ? buildRasterPrompt(prompt, taskMode === 'icon' ? 'icon' : 'image')
@@ -1522,6 +1593,12 @@ export default {
           <div id="ai_chat_status" class="ai_chat_status"></div>
           <div class="ai_chat_composer">
             <div id="ai_attach_strip" class="ai_attach_strip" style="display:none"></div>
+            <div class="ai_composer_pills">
+              <button type="button" id="ai_chart_pill" class="ai_pill" title="${t(svgEditor, 'chartPillTitle')}">
+                <span class="ai_pill_icon" aria-hidden="true"></span>
+                ${t(svgEditor, 'chartPill')}
+              </button>
+            </div>
             <textarea id="ai_chat_input" rows="3" placeholder="${t(svgEditor, 'placeholder')}"></textarea>
             <input type="file" id="ai_image_input" accept="image/*" multiple hidden />
             <input type="file" id="ai_csv_input" accept=".csv,text/csv" multiple hidden />
@@ -1562,6 +1639,7 @@ export default {
           })
         }
         syncPlotUi()
+        syncChartPill()
         setSettingsOpen(getSettingsOpen())
         $click($id('ai_settings_toggle'), () => {
           const body = $id('ai_settings_body')
@@ -1579,6 +1657,7 @@ export default {
         $click($id('ai_refresh_models'), () => { refreshModelsFromApi() })
         $click($id('ai_chat_attach'), () => $id('ai_image_input')?.click())
         $click($id('ai_chat_attach_csv'), () => $id('ai_csv_input')?.click())
+        $click($id('ai_chart_pill'), () => openChartPicker())
         $id('ai_image_input')?.addEventListener('change', (e) => {
           const files = e.target?.files
           if (files?.length) addImageFiles(files)
