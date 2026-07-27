@@ -61,9 +61,10 @@ Return ONE JSON object (no markdown fences if possible; if you must fence, use \
 
 Planning rules:
 - Preferred canvas size around ${w}×${h} unless the format needs landscape poster/slide (e.g. 1920×1080 slide, 1200×800 abstract).
+- Use kind="svg" for titles, captions, arrows, boxes, flowcharts, charts, labels, panel frames, connectors — keep each SVG brief SIMPLE (flat shapes + short text; avoid full-scene illustrations in SVG).
 - Use kind="icon" for BioRender-style biological objects (cells, proteins, organs, labware) — single subject, will be transparent cutouts.
-- Use kind="svg" for titles, captions, arrows, boxes, flowcharts, charts, labels, panels frames, connectors, geometric layouts.
 - Use kind="image" sparingly for richer multi-object scenes that are not cutout icons.
+- Prefer 1 background svg, 1 cards/frames svg, 1 arrows svg, 1 captions svg, plus 2–4 icons. Do not ask SVG pieces to render complex 3D chemistry.
 - Max ${MAX_ITEMS} items total, max ${MAX_ICONS} icon/image items (cost control). Prefer fewer strong pieces.
 - Coordinates are absolute on the canvas; items must not wildly overlap unless intentional layering.
 - Order items back-to-front (background first).
@@ -316,10 +317,137 @@ export async function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
 }
 
 function buildSvgPieceSystemPrompt (box, role) {
-  return `You generate ONE self-contained SVG piece for a scientific ${role || 'panel'}.
-Output a complete <svg> with viewBox fitting the content. Preferred size ~${box.w}×${box.h}.
-Rules: no scripts, no foreignObject, no external URLs. Use path/rect/circle/text/g. Science-friendly colors. font-family="sans-serif".
-Return ONLY the SVG (optional short caption text outside is ok but SVG is required).`
+  return `You generate ONE compact self-contained SVG piece for a scientific ${role || 'panel'}.
+Output a complete <svg viewBox="0 0 ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg"> … </svg>.
+HARD LIMITS (critical — responses get truncated otherwise):
+- Keep under ~60 elements total. Prefer rect/circle/line/path/text/g only.
+- No nested <svg>, no images, no foreignObject, no scripts, no filters/effects stacks.
+- Short labels only. Science-friendly flat colors. font-family="sans-serif".
+Return ONLY the SVG markup.`
+}
+
+/**
+ * Deterministic layout SVG when the model fails (keeps Max mode usable).
+ */
+export function buildStructuralSvgFallback (item) {
+  const { w, h, role, prompt, id } = item
+  const roleL = String(role || '').toLowerCase()
+  const idL = String(id || '').toLowerCase()
+  const title = (prompt || id || 'Panel').split(/[.•\n]/)[0].slice(0, 48)
+
+  if (roleL.includes('background') || idL.includes('bg') || idL.includes('header')) {
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f2744"/>
+      <stop offset="55%" stop-color="#f7f9fc"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  <text x="36" y="48" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="700">${escapeXml(title)}</text>
+</svg>`
+  }
+
+  if (roleL.includes('arrow') || idL.includes('arrow')) {
+    const mid = Math.round(h / 2)
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#0D99FF"/>
+    </marker>
+  </defs>
+  <line x1="8" y1="${mid}" x2="${Math.round(w / 2 - 20)}" y2="${mid}" stroke="#0D99FF" stroke-width="6" stroke-linecap="round" marker-end="url(#ah)"/>
+  <line x1="${Math.round(w / 2 + 20)}" y1="${mid}" x2="${w - 16}" y2="${mid}" stroke="#0D99FF" stroke-width="6" stroke-linecap="round" marker-end="url(#ah)"/>
+</svg>`
+  }
+
+  if (roleL.includes('caption') || roleL.includes('label') || idL.includes('caption') || idL.includes('label')) {
+    const lines = String(prompt || '')
+      .split(/(?:Step\s*\d|•|\n|;)/i)
+      .map((s) => s.replace(/^[^A-Za-z0-9]+/, '').trim())
+      .filter(Boolean)
+      .slice(0, 3)
+    const cols = Math.max(1, lines.length)
+    const colW = w / cols
+    const texts = lines.map((line, i) => {
+      const cx = Math.round(colW * i + colW / 2)
+      return `<text x="${cx}" y="${Math.round(h / 2)}" text-anchor="middle" fill="#1f2937" font-family="sans-serif" font-size="14">${escapeXml(line.slice(0, 70))}</text>`
+    }).join('\n')
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">${texts || `<text x="20" y="30" fill="#333" font-family="sans-serif" font-size="14">${escapeXml(title)}</text>`}</svg>`
+  }
+
+  // Default: card / panel frame(s)
+  if (roleL.includes('panel') || roleL.includes('card') || idL.includes('card') || idL.includes('step')) {
+    const n = 3
+    const gap = 20
+    const cw = Math.floor((w - gap * (n + 1)) / n)
+    const ch = h - gap * 2
+    let rects = ''
+    for (let i = 0; i < n; i++) {
+      const x = gap + i * (cw + gap)
+      rects += `<rect x="${x}" y="${gap}" width="${cw}" height="${ch}" rx="16" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+      <text x="${x + 18}" y="${gap + 28}" fill="#0D99FF" font-family="sans-serif" font-size="16" font-weight="700">Step ${i + 1}</text>`
+    }
+    return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">${rects}</svg>`
+  }
+
+  return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="16" y="28" fill="#334155" font-family="sans-serif" font-size="14">${escapeXml(title)}</text>
+</svg>`
+}
+
+function escapeXml (s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+async function generateSvgPiece (apiKey, textModel, item, signal) {
+  const systemInstruction = buildSvgPieceSystemPrompt(item, item.role)
+  const userText = `Create a compact SVG (${item.w}×${item.h}) for role="${item.role}".
+Brief: ${item.prompt}
+Keep it simple and complete.`
+
+  let lastErr = 'No SVG in model reply'
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const reply = await generateGeminiText({
+        apiKey,
+        model: textModel,
+        contents: [{
+          role: 'user',
+          parts: [{
+            text: attempt === 0
+              ? userText
+              : `${userText}\nRETRY: previous output was invalid/truncated. Use fewer shapes. Close all tags.`
+          }]
+        }],
+        systemInstruction,
+        signal,
+        generationConfig: {
+          temperature: attempt === 0 ? 0.35 : 0.2,
+          maxOutputTokens: 12288
+        }
+      })
+      const svg = extractSvgFromText(reply)
+      if (svg) return { svg, source: attempt === 0 ? 'model' : 'model-retry' }
+      lastErr = `Model reply had no usable <svg> (len=${(reply || '').length})`
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err
+      lastErr = err?.message || String(err)
+    }
+  }
+
+  // Structural fallback so the abstract still composes
+  return {
+    svg: buildStructuralSvgFallback(item),
+    source: 'fallback',
+    warning: lastErr
+  }
 }
 
 /**
@@ -380,6 +508,10 @@ export async function runMaxMode (ctx) {
   let okIcons = 0
   let okSvg = 0
   let fails = 0
+  /** @type {string[]} */
+  const failReasons = []
+  /** @type {string[]} */
+  const warnings = []
 
   for (let i = 0; i < plan.items.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
@@ -423,28 +555,18 @@ export async function runMaxMode (ctx) {
           okIcons++
         } else {
           fails++
+          failReasons.push(`${item.id}: ${placed.message || 'image place failed'}`)
         }
         paint(svgEditor)
         await delay(120, signal)
       } else {
-        const reply = await generateGeminiText({
-          apiKey,
-          model: textModel,
-          contents: [{ role: 'user', parts: [{ text: item.prompt }] }],
-          systemInstruction: buildSvgPieceSystemPrompt(item, item.role),
-          signal
-        })
-        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-        const svg = extractSvgFromText(reply)
-        if (!svg) {
-          setGuideState(guide, 'fail')
-          fails++
-          paint(svgEditor)
-          continue
+        const gen = await generateSvgPiece(apiKey, textModel, item, signal)
+        if (gen.warning) {
+          warnings.push(`${item.id}: used layout fallback (${gen.warning})`)
         }
         removeGuide(guide)
         guides.delete(item.id)
-        const placed = await placeSvgInBox(svgEditor, svg, item, {
+        const placed = await placeSvgInBox(svgEditor, gen.svg, item, {
           role: item.role,
           signal,
           stepMs: 24,
@@ -455,6 +577,7 @@ export async function runMaxMode (ctx) {
           okSvg++
         } else {
           fails++
+          failReasons.push(`${item.id}: ${placed.message || 'svg place failed'}`)
         }
         paint(svgEditor)
         await delay(80, signal)
@@ -463,6 +586,7 @@ export async function runMaxMode (ctx) {
       if (err?.name === 'AbortError') throw err
       setGuideState(guide, 'fail')
       fails++
+      failReasons.push(`${item.id}: ${err?.message || String(err)}`)
       paint(svgEditor)
       onItem?.(item, i, plan.items.length, err)
     }
@@ -477,6 +601,8 @@ export async function runMaxMode (ctx) {
     okIcons,
     okSvg,
     fails,
-    total: plan.items.length
+    total: plan.items.length,
+    failReasons,
+    warnings
   }
 }

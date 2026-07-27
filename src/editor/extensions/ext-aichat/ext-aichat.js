@@ -610,11 +610,18 @@ export default {
             .replace('{{icons}}', String(result.okIcons))
             .replace('{{fail}}', String(result.fails))
             .replace('{{total}}', String(result.total))
-          appendMsg('model', doneMsg)
+          let detail = doneMsg
+          if (result.warnings?.length) {
+            detail += `\n\nNotes:\n- ${result.warnings.slice(0, 8).join('\n- ')}`
+          }
+          if (result.failReasons?.length) {
+            detail += `\n\nFailures:\n- ${result.failReasons.slice(0, 8).join('\n- ')}`
+          }
+          appendMsg('model', detail)
           history.push({
             role: 'model',
-            text: doneMsg,
-            parts: [{ text: doneMsg }]
+            text: detail,
+            parts: [{ text: detail }]
           })
           pushActionHistory({
             prompt: displayText,

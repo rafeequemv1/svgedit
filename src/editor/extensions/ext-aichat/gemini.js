@@ -133,7 +133,8 @@ export async function generateGeminiText ({
   model,
   contents,
   systemInstruction,
-  signal
+  signal,
+  generationConfig
 }) {
   const safeModel = resolveActiveModel(model)
   const data = await postGemini({
@@ -142,7 +143,7 @@ export async function generateGeminiText ({
     contents,
     systemInstruction,
     signal,
-    generationConfig: {
+    generationConfig: generationConfig || {
       temperature: 0.45,
       maxOutputTokens: 8192
     }
@@ -151,7 +152,12 @@ export async function generateGeminiText ({
   const parts = data?.candidates?.[0]?.content?.parts
   if (!Array.isArray(parts) || !parts.length) {
     const block = data?.promptFeedback?.blockReason
-    throw new Error(block ? `Blocked: ${block}` : 'Empty model response')
+    const finish = data?.candidates?.[0]?.finishReason
+    throw new Error(block
+      ? `Blocked: ${block}`
+      : finish
+        ? `Empty model response (${finish})`
+        : 'Empty model response')
   }
   return parts.map((p) => p.text || '').join('')
 }
@@ -248,6 +254,7 @@ export async function listGeminiModels (apiKey, opts = {}) {
 
 /**
  * Extract first SVG document from model text (fenced or raw).
+ * Also attempts to salvage truncated SVG missing a closing tag.
  * @param {string} text
  * @returns {string|null}
  */
@@ -256,7 +263,20 @@ export function extractSvgFromText (text) {
   const fenced = text.match(/```(?:svg)?\s*([\s\S]*?<svg[\s\S]*?<\/svg>)\s*```/i)
   if (fenced?.[1]) return fenced[1].trim()
   const raw = text.match(/<svg\b[\s\S]*?<\/svg>/i)
-  return raw ? raw[0].trim() : null
+  if (raw) return raw[0].trim()
+
+  // Truncated response: open <svg> without </svg>
+  const open = text.match(/<svg\b[\s\S]*$/i)
+  if (open) {
+    let frag = open[0]
+      .replace(/```[\s\S]*$/m, '')
+      .trim()
+    // Drop a trailing incomplete tag
+    frag = frag.replace(/<[^>]*$/m, '')
+    if (!/<\/svg>\s*$/i.test(frag)) frag += '</svg>'
+    if (/<svg\b/i.test(frag) && frag.length > 40) return frag
+  }
+  return null
 }
 
 /**
