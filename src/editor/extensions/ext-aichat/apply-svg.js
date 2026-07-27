@@ -439,7 +439,25 @@ export function assistantOfferedGeneration (text) {
 }
 
 /**
- * Context from prior chat turns for follow-up intent.
+ * User is asking what plots/analyses to run (explore CSV, no render yet).
+ * @param {string} prompt
+ */
+export function looksLikePlotAnalysisRequest (prompt) {
+  const text = String(prompt || '').trim().toLowerCase()
+  if (!text) return false
+  return /\b(what (?:plot|chart|graph|analysis|analyses)|which (?:plot|chart|graph)|suggest (?:plot|chart|analysis)|explore (?:the )?data|what can (?:i|you) (?:plot|visualize|chart)|types? of (?:plot|chart|analysis)|how should i (?:plot|visualize))\b/.test(text)
+}
+
+export function assistantOfferedPlotPlan (text) {
+  const t = String(text || '').toLowerCase()
+  if (!t) return false
+  return (
+    /\b(reply\s+\*\*yes\*\*|name the plots|which plots you want|generate them)\b/.test(t) ||
+    (/\b(bar|line|scatter|histogram|boxplot|heatmap|pie)\b/.test(t) && /\b(plot|chart|analysis)\b/.test(t) && t.includes('?'))
+  )
+}
+
+/**
  * @param {Array<{role:string,text?:string}>} history
  * @param {Array<{mode?:string,note?:string}>} [actionHistory]
  */
@@ -457,6 +475,7 @@ export function buildGenerativeIntentContext (history, actionHistory = []) {
   return {
     lastModelText,
     lastModelOfferedGeneration: assistantOfferedGeneration(lastModelText),
+    lastModelOfferedPlotPlan: assistantOfferedPlotPlan(lastModelText),
     recentCanvasWork
   }
 }
@@ -473,7 +492,7 @@ export function looksLikeGenerativeIntent (prompt, opts = {}) {
   if (!text) return false
   if (DECLINE_RE.test(text)) return false
   if (opts.editSelection && looksLikeEditIntent(text)) return true
-  if (AFFIRM_RE.test(text) && opts.lastModelOfferedGeneration) return true
+  if (AFFIRM_RE.test(text) && (opts.lastModelOfferedGeneration || opts.lastModelOfferedPlotPlan)) return true
   if (CHITCHAT_RE.test(text) || META_HELP_RE.test(text)) return false
 
   const p = text.toLowerCase()
@@ -541,18 +560,18 @@ export function summarizeSelectionSvg (selectionSvg) {
 }
 
 import { buildEditorToolsPromptSection } from './place-tools.js'
-import { buildPlotPromptSection } from './apply-plot.js'
+import { buildPlotPromptSection, buildPlotAnalysisPromptSection } from './apply-plot.js'
 
 /**
  * Build system prompt: conversational assistant that knows every tool and draws when asked.
- * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, hasCsv?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string, useBrushes?: boolean, usePlots?: boolean, plotEngine?: string, chatOnly?: boolean, taskMode?: string }} ctx
+ * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, hasCsv?: boolean, selectionSvg?: string, selectionSummary?: string, selectionChartSpec?: string, continuityNote?: string, useBrushes?: boolean, usePlots?: boolean, plotAnalysisOnly?: boolean, chatOnly?: boolean, taskMode?: string }} ctx
  */
 export function buildSystemPrompt (ctx) {
   const {
-    w, h, mode, includeCanvas, canvasSvg, hasImages, hasCsv, selectionSvg, selectionSummary, continuityNote,
+    w, h, mode, includeCanvas, canvasSvg, hasImages, hasCsv, selectionSvg, selectionSummary, selectionChartSpec, continuityNote,
     useBrushes = false,
     usePlots = false,
-    plotEngine = 'vega',
+    plotAnalysisOnly = false,
     chatOnly = false,
     taskMode = 'draw'
   } = ctx
@@ -570,7 +589,9 @@ You are conversational: chat naturally, retain prior turns, ask clarifying quest
 IMPORTANT: Never use function calling, tool calls, tool_request JSON, or API tool schemas. The host app is not a tool-calling agent. Draw by emitting SVG markup in your reply; otherwise answer in plain text.
 When the user wants something drawn, illustrated, diagrammed, sketched, or added to the canvas — you MUST output valid SVG that the app will place on the canvas automatically.
 ${hasImages ? 'The user attached image(s). Treat them as visual reference: describe, recreate as clean SVG, vectorize/style-match, or extract diagrams as requested.\n' : ''}${hasCsv ? 'The user attached CSV data for plotting. Use the column names from the attachment in your chart spec; leave data arrays empty for host injection.\n' : ''}
-${selectionSvg
+${selectionChartSpec
+    ? `CHART EDIT MODE: The user selected a Vega-Lite chart on the canvas. Return an updated \`\`\`vega-lite block (host re-renders the chart in place). Current spec:\n${selectionChartSpec.slice(0, 12000)}\n`
+    : selectionSvg
     ? `SELECTION EDIT MODE: The user selected element(s) on the canvas. Edit ONLY that selection. Return a complete <svg> whose children REPLACE the selection (same approximate position/size unless asked otherwise). Do not redraw the whole document.\nSELECTED MARKUP:\n${selectionSvg.slice(0, 12000)}\n`
     : (selectionSummary
       ? `The user currently has a canvas selection (${selectionSummary}). If they ask to change “it/this/selection”, edit that selection with SVG; otherwise continue the conversation.\n`
@@ -658,7 +679,11 @@ Helpful illustration partner for science and general diagrams: concise, clear. A
   prompt += `\n${buildEditorToolsPromptSection({ useBrushes, w, h })}\n`
 
   if (usePlots) {
-    prompt += `\n${buildPlotPromptSection(plotEngine === 'echarts' ? 'echarts' : 'vega')}\n`
+    if (plotAnalysisOnly) {
+      prompt += `\n${buildPlotAnalysisPromptSection()}\n`
+    } else {
+      prompt += `\n${buildPlotPromptSection()}\n`
+    }
   }
 
   if (continuityNote) {

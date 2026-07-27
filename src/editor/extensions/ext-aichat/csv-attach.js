@@ -112,6 +112,20 @@ export function primaryCsvTable (csvFiles) {
 }
 
 /**
+ * @param {object} spec
+ * @param {{rows:object[]}|null} csv
+ */
+export function injectCsvIntoVegaSpec (spec, csv) {
+  const copy = JSON.parse(JSON.stringify(spec))
+  if (!csv?.rows?.length) return copy
+  if (!copy.data) copy.data = {}
+  if (!copy.data.values || !Array.isArray(copy.data.values) || copy.data.values.length < 2) {
+    copy.data.values = csv.rows
+  }
+  return copy
+}
+
+/**
  * @param {DataTransfer|null|undefined} dt
  * @returns {File[]}
  */

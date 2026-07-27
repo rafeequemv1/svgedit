@@ -29,6 +29,7 @@ class RightPanel {
     const { i18next } = this.editor
     $id('tab_btn_properties').textContent = i18next.t('ui.tab_properties')
     $id('tab_btn_align').textContent = i18next.t('ui.tab_align')
+    $id('tab_btn_charts').textContent = i18next.t('ui.tab_charts')
     $id('tab_btn_layers').textContent = i18next.t('ui.tab_layers')
     const alignHint = $id('align_hint')
     if (alignHint) {

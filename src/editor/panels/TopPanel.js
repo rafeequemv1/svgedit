@@ -30,7 +30,21 @@ class TopPanel {
     let cur = el
     while (cur && cur.nodeType === 1) {
       const shape = cur.getAttribute?.('shape')
-      if (shape) return true
+      if (shape && shape !== 'chart') return true
+      if (cur.tagName === 'svg' || cur.id === 'svgcontent') break
+      cur = cur.parentNode
+    }
+    return false
+  }
+
+  /**
+   * @param {Element|null|undefined} el
+   * @returns {boolean}
+   */
+  isChartElement (el) {
+    let cur = el
+    while (cur && cur.nodeType === 1) {
+      if (cur.getAttribute?.('shape') === 'chart') return true
       if (cur.tagName === 'svg' || cur.id === 'svgcontent') break
       cur = cur.parentNode
     }
@@ -331,6 +345,10 @@ class TopPanel {
 
       if (!isNode && currentMode !== 'pathedit') {
         // Generators / brushes: only their extension panel (opened in selectedChanged)
+        if (this.isChartElement(elem)) {
+          this.editor.rightPanel?.switchTab?.('charts')
+          return
+        }
         if (this.isExtensionBrush(elem)) {
           this.editor.rightPanel?.switchTab?.('properties')
           return

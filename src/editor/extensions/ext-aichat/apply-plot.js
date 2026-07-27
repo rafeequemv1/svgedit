@@ -1,42 +1,9 @@
 /**
- * Render AI plot specs (Vega-Lite / ECharts) to SVG on the canvas.
+ * Render AI Vega-Lite plot specs to chart groups on the canvas.
  */
 
-import { applySvgToCanvas } from './apply-svg.js'
-import { primaryCsvTable } from './csv-attach.js'
-
-/** @type {Promise<any>|null} */
-let echartsReady = null
-/** @type {Promise<any>|null} */
-let vegaEmbedReady = null
-
-async function loadVegaEmbed () {
-  if (!vegaEmbedReady) {
-    vegaEmbedReady = import('vega-embed').then((m) => m.default || m)
-  }
-  return vegaEmbedReady
-}
-
-async function loadEcharts () {
-  if (!echartsReady) {
-    echartsReady = (async () => {
-      const echarts = await import('echarts/core')
-      const { BarChart, LineChart, ScatterChart, PieChart, BoxplotChart, HeatmapChart } = await import('echarts/charts')
-      const {
-        GridComponent, TooltipComponent, LegendComponent, TitleComponent,
-        DatasetComponent, ToolboxComponent
-      } = await import('echarts/components')
-      const { SVGRenderer } = await import('echarts/renderers')
-      echarts.use([
-        BarChart, LineChart, ScatterChart, PieChart, BoxplotChart, HeatmapChart,
-        GridComponent, TooltipComponent, LegendComponent, TitleComponent,
-        DatasetComponent, ToolboxComponent, SVGRenderer
-      ])
-      return echarts
-    })()
-  }
-  return echartsReady
-}
+import { placeChartOnCanvas } from '../ext-chart/chart-spec.js'
+import { buildVegaMarkCatalogSection } from '../ext-chart/chart-templates.js'
 
 /**
  * @param {string} text
@@ -62,6 +29,31 @@ function extractFencedJson (text, tags) {
 }
 
 /**
+ * @param {string} text
+ * @param {string} tag
+ * @returns {object[]}
+ */
+function extractAllFencedJson (text, tag) {
+  const re = new RegExp('```\\s*' + tag + '\\s*([\\s\\S]*?)```', 'gi')
+  const out = []
+  let m
+  const src = String(text || '')
+  while ((m = re.exec(src)) !== null) {
+    const raw = m[1].trim()
+    try {
+      out.push(JSON.parse(raw))
+    } catch {
+      const start = raw.indexOf('{')
+      const end = raw.lastIndexOf('}')
+      if (start >= 0 && end > start) {
+        try { out.push(JSON.parse(raw.slice(start, end + 1))) } catch { /* ignore */ }
+      }
+    }
+  }
+  return out
+}
+
+/**
  * @param {object} obj
  */
 function isVegaLiteSpec (obj) {
@@ -72,131 +64,27 @@ function isVegaLiteSpec (obj) {
 }
 
 /**
- * @param {object} obj
- */
-function isEchartsOption (obj) {
-  if (!obj || typeof obj !== 'object') return false
-  return !!(obj.series || obj.xAxis || obj.dataset || obj.radar)
-}
-
-/**
  * @param {string} text
- * @param {'vega'|'echarts'} preferred
  */
-export function extractPlotSpecFromText (text, preferred = 'vega') {
-  const vega = extractFencedJson(text, ['vega-lite', 'vega', 'vl', 'json'])
-  const echarts = extractFencedJson(text, ['echarts', 'echart', 'json'])
-  const vegaOk = isVegaLiteSpec(vega)
-  const echartsOk = isEchartsOption(echarts)
-
-  if (preferred === 'echarts') {
-    if (echartsOk) return { engine: 'echarts', spec: echarts }
-    if (vegaOk) return { engine: 'vega', spec: vega }
-  } else {
-    if (vegaOk) return { engine: 'vega', spec: vega }
-    if (echartsOk) return { engine: 'echarts', spec: echarts }
-  }
+export function extractPlotSpecFromText (text) {
+  const vega = extractFencedJson(text, ['vega-lite', 'vega', 'vl'])
+  if (isVegaLiteSpec(vega)) return { engine: 'vega-lite', spec: vega }
+  const loose = extractFencedJson(text, ['json'])
+  if (isVegaLiteSpec(loose)) return { engine: 'vega-lite', spec: loose }
   return null
 }
 
 /**
- * @param {object} spec
- * @param {{rows:object[]}|null} csv
+ * @param {string} text
+ * @returns {object[]}
  */
-export function injectCsvIntoVegaSpec (spec, csv) {
-  const copy = JSON.parse(JSON.stringify(spec))
-  if (!csv?.rows?.length) return copy
-  if (!copy.data) copy.data = {}
-  if (!copy.data.values || !Array.isArray(copy.data.values) || copy.data.values.length < 2) {
-    copy.data.values = csv.rows
-  }
-  return copy
-}
-
-/**
- * @param {object} opt
- * @param {{rows:object[]}|null} csv
- */
-export function injectCsvIntoEchartsOption (opt, csv) {
-  const copy = JSON.parse(JSON.stringify(opt))
-  if (!csv?.rows?.length) return copy
-  if (!copy.dataset) copy.dataset = {}
-  if (!copy.dataset.source || !Array.isArray(copy.dataset.source) || copy.dataset.source.length < 2) {
-    copy.dataset.source = csv.rows
-  }
-  return copy
-}
-
-/**
- * @param {string} inner
- * @param {number} w
- * @param {number} h
- */
-function wrapSvg (inner, w, h) {
-  const body = String(inner || '').trim()
-  if (/^<svg[\s>]/i.test(body)) return body
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`
-}
-
-/**
- * @param {object} spec
- * @param {{w:number,h:number}} size
- */
-export async function vegaSpecToSvg (spec, size = { w: 640, h: 400 }) {
-  const embed = await loadVegaEmbed()
-  const w = Math.max(280, Math.round(spec.width || size.w - 48))
-  const h = Math.max(200, Math.round(spec.height || size.h - 80))
-  const vs = { ...spec, width: w, height: h }
-  const host = document.createElement('div')
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:1px;height:1px;overflow:hidden'
-  document.body.appendChild(host)
-  try {
-    const result = await embed(host, vs, { actions: false, renderer: 'svg' })
-    const svg = await result.view.toSVG()
-    result.view.finalize()
-    return wrapSvg(svg, w, h)
-  } finally {
-    host.remove()
-  }
-}
-
-/**
- * @param {object} option
- * @param {{w:number,h:number}} size
- */
-export async function echartsOptionToSvg (option, size = { w: 640, h: 400 }) {
-  const echarts = await loadEcharts()
-  const w = Math.max(280, size.w - 48)
-  const h = Math.max(200, size.h - 80)
-  const host = document.createElement('div')
-  host.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px`
-  document.body.appendChild(host)
-  try {
-    const chart = echarts.init(host, null, { renderer: 'svg', width: w, height: h })
-    chart.setOption(option, { notMerge: true })
-    const svgEl = host.querySelector('svg')
-    const xml = svgEl?.outerHTML || ''
-    chart.dispose()
-    if (!xml) throw new Error('ECharts produced no SVG')
-    return wrapSvg(xml, w, h)
-  } finally {
-    host.remove()
-  }
-}
-
-/**
- * @param {{engine:'vega'|'echarts',spec:object}} plot
- * @param {{rows:object[]}[]} csvFiles
- * @param {{w:number,h:number}} canvasSize
- */
-export async function renderPlotToSvg (plot, csvFiles, canvasSize) {
-  const csv = primaryCsvTable(csvFiles)
-  if (plot.engine === 'echarts') {
-    const opt = injectCsvIntoEchartsOption(plot.spec, csv)
-    return echartsOptionToSvg(opt, canvasSize)
-  }
-  const spec = injectCsvIntoVegaSpec(plot.spec, csv)
-  return vegaSpecToSvg(spec, canvasSize)
+export function extractAllPlotSpecsFromText (text) {
+  const fromVega = extractAllFencedJson(text, 'vega-lite')
+    .concat(extractAllFencedJson(text, 'vega'))
+    .concat(extractAllFencedJson(text, 'vl'))
+    .filter(isVegaLiteSpec)
+  if (fromVega.length) return fromVega
+  return extractAllFencedJson(text, 'json').filter(isVegaLiteSpec)
 }
 
 /**
@@ -204,39 +92,17 @@ export async function renderPlotToSvg (plot, csvFiles, canvasSize) {
  */
 export function stripPlotBlocksFromReply (text) {
   return String(text || '')
-    .replace(/```(?:vega-lite|vega|vl|echarts|echart)\s*[\s\S]*?```/gi, '')
+    .replace(/```(?:vega-lite|vega|vl)\s*[\s\S]*?```/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
 /**
- * @param {'vega'|'echarts'} engine
+ * Build Vega-Lite plot instructions for the system prompt.
  */
-export function buildPlotPromptSection (engine = 'vega') {
-  if (engine === 'echarts') {
-    return `# Data plots (ECharts — ON)
-When the user asks for a chart/graph/plot (especially with CSV data), output ONE fenced block FIRST:
-
-\`\`\`echarts
-{
-  "title": { "text": "Chart title", "left": "center" },
-  "tooltip": {},
-  "legend": {},
-  "dataset": { "source": [] },
-  "xAxis": { "type": "category" },
-  "yAxis": { "type": "value" },
-  "series": [{ "type": "bar" }]
-}
-\`\`\`
-
-Rules:
-- Leave \`dataset.source\` as \`[]\` when CSV is attached — the host injects all rows.
-- Map columns with \`encode: { x: "columnName", y: "columnName" }\` on series when using dataset.
-- Supported types: bar, line, scatter, pie, boxplot, heatmap.
-- Short caption AFTER the fence. Do not also draw the same chart as hand-made SVG.`
-  }
+export function buildPlotPromptSection () {
   return `# Data plots (Vega-Lite — ON)
-When the user asks for a chart/graph/plot (especially with CSV data), output ONE fenced block FIRST:
+When the user asks for a chart/graph/plot (especially with CSV data), output ONE OR MORE fenced blocks FIRST:
 
 \`\`\`vega-lite
 {
@@ -254,26 +120,66 @@ When the user asks for a chart/graph/plot (especially with CSV data), output ONE
 Rules:
 - Leave \`data.values\` as \`[]\` when CSV is attached — the host injects all rows.
 - Use correct field names from the CSV columns in \`encoding\`.
-- Marks: bar, line, point, area, boxplot, rect (heatmap), arc (pie).
-- Short caption AFTER the fence. Do not also draw the same chart as hand-made SVG.`
+- For multiple charts (after user confirms), emit multiple \`\`\`vega-lite blocks (one per chart).
+- Short caption AFTER the fence(s). Do not also draw the same chart as hand-made SVG.
+
+${buildVegaMarkCatalogSection()}`
+}
+
+/**
+ * Prompt when user asks what analyses/plots are possible (CSV attached, no render yet).
+ */
+export function buildPlotAnalysisPromptSection () {
+  return `# CSV plot exploration (suggest only — do NOT emit vega-lite yet)
+The user attached CSV data and wants analysis suggestions.
+
+1. List 4–8 suitable plot types from the Vega-Lite catalog (bar, line, scatter, histogram, boxplot, heatmap, pie, etc.).
+2. For each, name the columns you would use and the scientific question it answers.
+3. End with: "Reply **yes** or name the plots you want (e.g. bar + scatter), and I will generate them."
+4. Do NOT output \`\`\`vega-lite blocks until the user confirms.`
 }
 
 /**
  * @param {object} svgEditor
  * @param {string} replyText
- * @param {'vega'|'echarts'} engine
  * @param {Array<{rows:object[]}>} csvFiles
  * @param {'replace'|'append'} mode
  * @param {{w:number,h:number}} canvasSize
+ * @param {Element|null} [replaceGroup]
  */
-export async function applyPlotFromReply (svgEditor, replyText, engine, csvFiles, mode, canvasSize) {
-  const plot = extractPlotSpecFromText(replyText, engine)
-  if (!plot) return { ok: false, message: 'No plot spec in reply' }
-  try {
-    const svg = await renderPlotToSvg(plot, csvFiles, canvasSize)
-    const result = applySvgToCanvas(svgEditor, svg, mode)
-    return { ...result, engine: plot.engine }
-  } catch (err) {
-    return { ok: false, message: err?.message || String(err), engine: plot.engine }
+export async function applyPlotFromReply (svgEditor, replyText, csvFiles, mode, canvasSize, replaceGroup = null) {
+  const specs = extractAllPlotSpecsFromText(replyText)
+  const single = extractPlotSpecFromText(replyText)
+  const toRender = specs.length ? specs : (single ? [single.spec] : [])
+  if (!toRender.length) return { ok: false, message: 'No plot spec in reply' }
+
+  const results = []
+  let lastGroup = replaceGroup
+  for (let i = 0; i < toRender.length; i++) {
+    const spec = toRender[i]
+    const placeMode = (i === 0 && mode === 'replace' && !replaceGroup) ? 'replace' : 'append'
+    try {
+      const result = await placeChartOnCanvas(
+        svgEditor,
+        spec,
+        csvFiles,
+        placeMode,
+        canvasSize,
+        i === 0 ? replaceGroup : null
+      )
+      results.push(result)
+      if (result.ok && result.element) lastGroup = result.element
+    } catch (err) {
+      results.push({ ok: false, message: err?.message || String(err) })
+    }
+  }
+  const okCount = results.filter((r) => r.ok).length
+  return {
+    ok: okCount > 0,
+    count: okCount,
+    total: toRender.length,
+    element: lastGroup,
+    engine: 'vega-lite',
+    message: okCount ? `Placed ${okCount} chart(s)` : (results[0]?.message || 'Plot failed')
   }
 }

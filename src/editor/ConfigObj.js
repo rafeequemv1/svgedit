@@ -202,6 +202,7 @@ export default class ConfigObj {
       'ext-nanoparticle',
       'ext-hydrogel',
       'ext-dna',
+      'ext-chart',
       'ext-aichat',
       'ext-eps',
       'ext-pathfinder',

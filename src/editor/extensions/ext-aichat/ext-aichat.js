@@ -19,7 +19,7 @@ import {
   compareGeminiModels,
   listGeminiModels
 } from './gemini.js'
-import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, formatUserFacingSvgError, looksLikeTruncatedSvg, buildContinuityNote, looksLikeEditIntent, looksLikeGenerativeIntent, buildGenerativeIntentContext, summarizeSelectionSvg } from './apply-svg.js'
+import { applySvgToCanvas, buildSystemPrompt, conversationalTextFromReply, compactModelHistory, formatApplyFailureDetails, formatUserFacingSvgError, looksLikeTruncatedSvg, buildContinuityNote, looksLikeEditIntent, looksLikeGenerativeIntent, looksLikePlotAnalysisRequest, buildGenerativeIntentContext, summarizeSelectionSvg } from './apply-svg.js'
 import {
   applySvgToCanvasAnimated,
   replaceSelectionWithSvg,
@@ -48,6 +48,7 @@ import {
   MAX_CSV_FILES
 } from './csv-attach.js'
 import { applyPlotFromReply, extractPlotSpecFromText } from './apply-plot.js'
+import { getSelectedChartContext } from '../ext-chart/chart-spec.js'
 
 const name = 'aichat'
 const LS_KEY = 'svgedit.gemini.apiKey'
@@ -59,7 +60,7 @@ const LS_COMPARE = 'svgedit.aichat.compare'
 const LS_COMPARE_MODELS = 'svgedit.aichat.compareModels'
 const LS_USE_BRUSHES = 'svgedit.aichat.useBrushes'
 const LS_USE_PLOTS = 'svgedit.aichat.usePlots'
-const LS_PLOT_ENGINE = 'svgedit.aichat.plotEngine'
+const LS_SETTINGS_OPEN = 'svgedit.aichat.settingsOpen'
 
 const loadExtensionTranslation = async function (svgEditor) {
   let translationModule
@@ -323,10 +324,7 @@ export default {
     const getCompareOn = () => localStorage.getItem(LS_COMPARE) === '1'
     const getUseBrushes = () => localStorage.getItem(LS_USE_BRUSHES) === '1'
     const getUsePlots = () => localStorage.getItem(LS_USE_PLOTS) === '1'
-    const getPlotEngine = () => {
-      const v = localStorage.getItem(LS_PLOT_ENGINE) || 'vega'
-      return v === 'echarts' ? 'echarts' : 'vega'
-    }
+    const getSettingsOpen = () => localStorage.getItem(LS_SETTINGS_OPEN) === '1'
 
     const fillModelSelect = (sel, models, selectedId) => {
       if (!sel) return
@@ -597,11 +595,18 @@ export default {
       }
     }
 
-    const addCsvFiles = async (files) => {
-      if (!getUsePlots()) {
-        setStatus(t(svgEditor, 'usePlotsHint'), true)
-        return
+    const ensurePlotsForCsv = () => {
+      if (getUsePlots()) return
+      const plotsToggle = $id('ai_use_plots')
+      if (plotsToggle) {
+        plotsToggle.checked = true
+        localStorage.setItem(LS_USE_PLOTS, '1')
+        syncPlotUi()
       }
+    }
+
+    const addCsvFiles = async (files) => {
+      ensurePlotsForCsv()
       const list = [...files].filter((f) => {
         const name = String(f?.name || '').toLowerCase()
         return f?.type === 'text/csv' || f?.type === 'application/vnd.ms-excel' || name.endsWith('.csv')
@@ -645,17 +650,29 @@ export default {
 
     const syncPlotUi = () => {
       const on = !!$id('ai_use_plots')?.checked
-      const wrap = $id('ai_plot_engine_wrap')
-      const csvBtn = $id('ai_chat_attach_csv')
       const hint = $id('ai_attach_hint')
-      if (wrap) wrap.style.display = on ? 'block' : 'none'
-      if (csvBtn) csvBtn.style.display = on ? '' : 'none'
       if (hint) {
-        hint.textContent = on
-          ? t(svgEditor, 'attachHintPlots')
-          : t(svgEditor, 'attachHint')
+        hint.textContent = t(svgEditor, 'attachHintPlots')
       }
       if (!on && pendingCsv.length) clearPendingCsv()
+    }
+
+    const syncSettingsUi = () => {
+      const open = !!$id('ai_settings_body')?.classList.contains('open')
+      const btn = $id('ai_settings_toggle')
+      if (btn) {
+        btn.classList.toggle('active', open)
+        btn.title = open ? t(svgEditor, 'hideSettings') : t(svgEditor, 'showSettings')
+      }
+    }
+
+    const setSettingsOpen = (open) => {
+      const body = $id('ai_settings_body')
+      if (!body) return
+      body.classList.toggle('open', open)
+      body.style.display = open ? 'flex' : 'none'
+      localStorage.setItem(LS_SETTINGS_OPEN, open ? '1' : '0')
+      syncSettingsUi()
     }
 
     const setStatus = (msg, isError = false) => {
@@ -797,13 +814,14 @@ export default {
       const compareOn = !isRaster && !isMax && !!$id('ai_compare_on')?.checked
       let editSelection = !isRaster && !isMax && !!$id('ai_edit_selection')?.checked
       const liveSelectionSvg = (!isRaster && !isMax) ? serializeSelection(svgCanvas) : ''
+      const chartCtx = (!isRaster && !isMax) ? getSelectedChartContext(svgEditor) : null
       // Auto-enable selection edit for short follow-ups when something is selected
-      if (!editSelection && liveSelectionSvg && looksLikeEditIntent(prompt)) {
+      if (!editSelection && (liveSelectionSvg || chartCtx) && looksLikeEditIntent(prompt)) {
         editSelection = true
         const editCb = $id('ai_edit_selection')
         if (editCb) editCb.checked = true
       }
-      const selectionSvg = editSelection ? liveSelectionSvg : ''
+      const selectionSvg = (editSelection && !chartCtx) ? liveSelectionSvg : ''
       const selectionSummary = (!editSelection && liveSelectionSvg)
         ? summarizeSelectionSvg(liveSelectionSvg)
         : ''
@@ -821,7 +839,10 @@ export default {
         rowCount: c.rowCount
       }))
       const usePlots = getUsePlots()
-      const plotEngine = ($id('ai_plot_engine')?.value || getPlotEngine()) === 'echarts' ? 'echarts' : 'vega'
+      const selectedChartGroup = chartCtx?.group || null
+      const selectionChartSpec = chartCtx?.spec
+        ? JSON.stringify(chartCtx.spec, null, 2)
+        : ''
 
       if (!apiKey) {
         setStatus(t(svgEditor, 'needKey'), true)
@@ -852,7 +873,11 @@ export default {
       const { signal } = activeAbort
       setBusyUi(true)
       input.value = ''
-      const generative = imagesSnapshot.length > 0 || (csvSnapshot.length > 0 && usePlots) || looksLikeGenerativeIntent(prompt, {
+      const plotAnalysisRequest = usePlots && csvSnapshot.length > 0 &&
+        looksLikePlotAnalysisRequest(prompt) &&
+        !looksLikeGenerativeIntent(prompt, { hasCsv: true, usePlots, lastModelOfferedPlotPlan: buildGenerativeIntentContext(history, actionHistory).lastModelOfferedPlotPlan })
+
+      const generative = imagesSnapshot.length > 0 || (csvSnapshot.length > 0 && usePlots && !plotAnalysisRequest) || looksLikeGenerativeIntent(prompt, {
         taskMode,
         editSelection,
         hasSelection: !!liveSelectionSvg,
@@ -905,14 +930,17 @@ export default {
       }
 
       try {
-        // Greetings / Q&A — text only, no Max / image / canvas work
-        if (!generative && !compareOn) {
-          setSteps(1, 'Chat')
+        // Greetings / Q&A / plot analysis suggestions — text only
+        if ((!generative || plotAnalysisRequest) && !compareOn) {
+          setSteps(1, plotAnalysisRequest ? 'Plot suggestions' : 'Chat')
           const systemInstruction = buildSystemPrompt({
             w: canvasSizeEarly.w,
             h: canvasSizeEarly.h,
             mode,
-            chatOnly: true,
+            chatOnly: !plotAnalysisRequest,
+            plotAnalysisOnly: plotAnalysisRequest,
+            usePlots: plotAnalysisRequest || usePlots,
+            hasCsv: csvSnapshot.length > 0,
             taskMode,
             continuityNote: buildContinuityNote(history, actionHistory[0] || null)
           })
@@ -1085,7 +1113,8 @@ export default {
             : buildContinuityNote(history, actionHistory[0] || null),
           useBrushes,
           usePlots,
-          plotEngine
+          plotAnalysisOnly: false,
+          selectionChartSpec: (editSelection || chartCtx) && selectionChartSpec ? selectionChartSpec : undefined
         })
         const contents = compareOn
           ? [{ role: 'user', parts: userParts }]
@@ -1141,15 +1170,15 @@ export default {
           let brushNote = ''
           let plotApplied = null
 
-          if (usePlots && extractPlotSpecFromText(replyText, plotEngine)) {
-            setSteps(3, plotEngine === 'echarts' ? 'ECharts' : 'Vega-Lite')
+          if (usePlots && extractPlotSpecFromText(replyText)) {
+            setSteps(3, 'Vega-Lite')
             plotApplied = await applyPlotFromReply(
               svgEditor,
               replyText,
-              plotEngine,
               csvSnapshot,
               effectiveMode,
-              canvasSize
+              canvasSize,
+              selectedChartGroup
             )
             if (plotApplied.ok) {
               setStatus(t(svgEditor, 'appliedPlot'))
@@ -1234,7 +1263,7 @@ export default {
             svg: applied.ok ? svg : undefined,
             note: canvasOk
               ? (plotApplied?.ok
-                ? `Plot (${plotApplied.engine || plotEngine})`
+                ? `Plot (${plotApplied.count || 1} chart${(plotApplied.count || 1) > 1 ? 's' : ''})`
                 : (brushNote ? `${brushNote} ${editSelection ? 'Edited selection' : 'Drawn on canvas'}` : (editSelection ? 'Edited selection' : 'Drawn on canvas')))
               : (brushNote || plotApplied?.message || 'Apply failed')
           })
@@ -1270,7 +1299,7 @@ export default {
         })
         const noSvgRow = appendMsg('model', talk || reply.slice(0, 2000))
         // Reply looked like it tried to draw but extract failed
-        if (replyDiag.hasSvgOpen || /```\s*svg/i.test(reply) || (usePlots && /```\s*(?:vega-lite|echarts)/i.test(reply))) {
+        if (replyDiag.hasSvgOpen || /```\s*svg/i.test(reply) || (usePlots && /```\s*vega-lite/i.test(reply))) {
           showApplyFailure(formatUserFacingSvgError(replyDiag, t(svgEditor, 'emptySvg')), {
             ...replyDiag,
             stage: 'extract',
@@ -1406,9 +1435,12 @@ export default {
         panel.innerHTML = `
           <div class="ai_chat_header">
             <strong>${t(svgEditor, 'panelTitle')}</strong>
-            <button type="button" id="ai_chat_close" class="ai_chat_icon_btn" title="${t(svgEditor, 'close')}">×</button>
+            <div class="ai_chat_header_actions">
+              <button type="button" id="ai_settings_toggle" class="ai_chat_icon_btn" title="${t(svgEditor, 'showSettings')}">⚙</button>
+              <button type="button" id="ai_chat_close" class="ai_chat_icon_btn" title="${t(svgEditor, 'close')}">×</button>
+            </div>
           </div>
-          <div class="ai_chat_settings">
+          <div id="ai_settings_body" class="ai_chat_settings" style="display:none">
             <label class="ai_field">
               <span>${t(svgEditor, 'apiKeyLabel')}</span>
               <input type="password" id="ai_api_key" autocomplete="off" spellcheck="false"
@@ -1472,15 +1504,6 @@ export default {
               <span>${t(svgEditor, 'usePlots')}</span>
             </label>
             <p class="ai_hint">${t(svgEditor, 'usePlotsHint')}</p>
-            <div id="ai_plot_engine_wrap" style="display:none">
-              <label class="ai_field">
-                <span>${t(svgEditor, 'plotEngineLabel')}</span>
-                <select id="ai_plot_engine">
-                  <option value="vega">${t(svgEditor, 'plotEngineVega')}</option>
-                  <option value="echarts">${t(svgEditor, 'plotEngineEcharts')}</option>
-                </select>
-              </label>
-            </div>
             <label class="ai_check">
               <input type="checkbox" id="ai_edit_selection" />
               <span>${t(svgEditor, 'editSelection')}</span>
@@ -1504,7 +1527,7 @@ export default {
             <input type="file" id="ai_csv_input" accept=".csv,text/csv" multiple hidden />
             <div class="ai_chat_actions">
               <button type="button" id="ai_chat_attach" class="ai_btn secondary" title="${t(svgEditor, 'attachImagesTitle')}">${t(svgEditor, 'attachImages')}</button>
-              <button type="button" id="ai_chat_attach_csv" class="ai_btn secondary" style="display:none" title="${t(svgEditor, 'attachCsvTitle')}">${t(svgEditor, 'attachCsv')}</button>
+              <button type="button" id="ai_chat_attach_csv" class="ai_btn secondary" title="${t(svgEditor, 'attachCsvTitle')}">${t(svgEditor, 'attachCsv')}</button>
               <button type="button" id="ai_chat_clear" class="ai_btn secondary">${t(svgEditor, 'clearChat')}</button>
               <button type="button" id="ai_chat_stop" class="ai_btn danger" style="display:none">${t(svgEditor, 'stop')}</button>
               <button type="button" id="ai_chat_send" class="ai_btn primary">${t(svgEditor, 'send')}</button>
@@ -1538,14 +1561,12 @@ export default {
             syncPlotUi()
           })
         }
-        const plotEngineSel = $id('ai_plot_engine')
-        if (plotEngineSel) {
-          plotEngineSel.value = getPlotEngine()
-          plotEngineSel.addEventListener('change', () => {
-            localStorage.setItem(LS_PLOT_ENGINE, plotEngineSel.value === 'echarts' ? 'echarts' : 'vega')
-          })
-        }
         syncPlotUi()
+        setSettingsOpen(getSettingsOpen())
+        $click($id('ai_settings_toggle'), () => {
+          const body = $id('ai_settings_body')
+          setSettingsOpen(!body?.classList.contains('open'))
+        })
         syncCompareUi()
 
         $click($id('tool_aichat'), () => {

@@ -24,6 +24,7 @@ export default {
     panel_action: 'Click to open side panel',
     tab_properties: 'Properties',
     tab_align: 'Align',
+    tab_charts: 'Charts',
     tab_layers: 'Layers',
     dock_properties: 'Minimize properties panel',
     undock_properties: 'Expand properties panel',
