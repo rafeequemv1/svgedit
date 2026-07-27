@@ -29,6 +29,8 @@ import {
   resolveToolPlan,
   placeToolsOnCanvas,
   parseToolsBlockFromReply,
+  normalizeToolSpecs,
+  formatBrushPlacementNote,
   activateEditorTool
 } from './place-tools.js'
 import { runMaxMode, formatPlanForChat } from './max-mode.js'
@@ -47,6 +49,7 @@ const LS_TASK = 'svgedit.aichat.task'
 const LS_OPEN = 'svgedit.aichat.open'
 const LS_COMPARE = 'svgedit.aichat.compare'
 const LS_COMPARE_MODELS = 'svgedit.aichat.compareModels'
+const LS_USE_BRUSHES = 'svgedit.aichat.useBrushes'
 
 const loadExtensionTranslation = async function (svgEditor) {
   let translationModule
@@ -306,6 +309,7 @@ export default {
       return (v === 'image' || v === 'icon' || v === 'max') ? v : 'draw'
     }
     const getCompareOn = () => localStorage.getItem(LS_COMPARE) === '1'
+    const getUseBrushes = () => localStorage.getItem(LS_USE_BRUSHES) === '1'
 
     const fillModelSelect = (sel, models, selectedId) => {
       if (!sel) return
@@ -882,12 +886,14 @@ export default {
         }
 
         const res = svgCanvas.getResolution?.() || { w: 640, h: 480 }
+        const canvasSize = {
+          w: Math.round(res.w) || 640,
+          h: Math.round(res.h) || 480
+        }
         const effectiveMode = editSelection ? 'append' : mode
+        const useBrushes = getUseBrushes()
         const toolPlan = (!compareOn && !editSelection)
-          ? resolveToolPlan(prompt || displayText, {
-            w: Math.round(res.w) || 640,
-            h: Math.round(res.h) || 480
-          })
+          ? resolveToolPlan(prompt || displayText, canvasSize)
           : { placements: [], svgHint: '', activate: null, note: '' }
 
         if (toolPlan.activate) {
@@ -903,19 +909,9 @@ export default {
           return
         }
 
-        let toolNote = ''
-        if (toolPlan.placements?.length) {
-          setSteps(2, 'Placing brush…')
-          const placed = placeToolsOnCanvas(svgEditor, toolPlan.placements)
-          if (placed.length) {
-            toolNote = toolPlan.note || `Placed ${placed.length} brush object(s) on canvas.`
-            setStatus(toolNote)
-          }
-        }
-
         const systemInstruction = buildSystemPrompt({
-          w: Math.round(res.w) || 640,
-          h: Math.round(res.h) || 480,
+          w: canvasSize.w,
+          h: canvasSize.h,
           mode: effectiveMode,
           includeCanvas: editSelection ? false : includeCanvas,
           canvasSvg: (!editSelection && includeCanvas) ? svgCanvas.getSvgString() : '',
@@ -924,8 +920,9 @@ export default {
           selectionSummary: selectionSummary || undefined,
           continuityNote: compareOn
             ? ''
-            : buildContinuityNote(history, actionHistory[0] || null)
-        }) + (toolPlan.svgHint ? `\n\n# Host tool placement\n${toolPlan.svgHint}` : '')
+            : buildContinuityNote(history, actionHistory[0] || null),
+          useBrushes
+        })
         const contents = compareOn
           ? [{ role: 'user', parts: userParts }]
           : buildContentsForPrompt(false, userParts)
@@ -973,61 +970,89 @@ export default {
             ...diagnoseReplyForSvg(replyText, svgOut),
             finishReason: gen.finishReason
           }
-          if (!svgOut) {
-            return { reply: replyText, svg: null, talk: talkOut, applied: { ok: false }, diag }
-          }
-          const applied = await applyOne(svgOut, effectiveMode, { editSelection, signal })
-          return { reply: replyText, svg: svgOut, talk: talkOut, applied, diag }
+          return { reply: replyText, svg: svgOut, talk: talkOut, diag }
         }
 
-        const retryNote = 'Previous SVG was truncated or had invalid XML. Output a SIMPLER drawing: ```svg block first, no filters/shadows, ≤40 elements, all tags closed, escape every & as &amp; in text.'
+        const applyReplyToCanvas = async (replyText, svgOut) => {
+          let brushNote = ''
+          if (useBrushes) {
+            const toolSpecs = normalizeToolSpecs(
+              parseToolsBlockFromReply(replyText),
+              canvasSize
+            )
+            if (toolSpecs.length) {
+              setSteps(2, 'Placing brushes…')
+              const placed = placeToolsOnCanvas(svgEditor, toolSpecs)
+              if (placed.length) {
+                brushNote = formatBrushPlacementNote(placed, toolSpecs)
+                setStatus(brushNote)
+              }
+            }
+          }
+          if (!svgOut) {
+            return {
+              ok: !!brushNote,
+              brushNote,
+              applied: { ok: !!brushNote }
+            }
+          }
+          setSteps(3)
+          const applied = await applyOne(svgOut, effectiveMode, { editSelection, signal })
+          return {
+            ok: applied.ok || !!brushNote,
+            brushNote,
+            applied
+          }
+        }
+
+        const retryNote = 'Previous SVG was truncated or had invalid XML. Output a SIMPLER drawing: ```tools block first if needed, then ```svg block, no filters/shadows, ≤40 elements, all tags closed, escape every & as &amp; in text.'
         let result = await drawOnce(systemInstruction, contents, '')
+        let canvasResult = await applyReplyToCanvas(result.reply, result.svg)
         if (
-          !result.applied.ok &&
           result.svg &&
-          (looksLikeTruncatedSvg({ ...result.diag, ...(result.applied.details || {}) }) ||
-            /entityref|xmlParseEntityRef/i.test(String(result.applied.details?.parserError || result.applied.message || '')))
+          !canvasResult.applied.ok &&
+          (looksLikeTruncatedSvg({ ...result.diag, ...(canvasResult.applied.details || {}) }) ||
+            /entityref|xmlParseEntityRef/i.test(String(canvasResult.applied.details?.parserError || canvasResult.applied.message || '')))
         ) {
           setSteps(2, 'Retrying simpler SVG…')
           setStatus(t(svgEditor, 'svgRetry'))
           result = await drawOnce(systemInstruction, contents, retryNote)
-          if (result.applied.ok) {
+          canvasResult = await applyReplyToCanvas(result.reply, result.svg)
+          if (canvasResult.applied.ok) {
             result.diag.retried = true
           }
         }
 
-        const { reply, svg, talk, applied, diag: replyDiag } = result
+        const { reply, svg, talk, diag: replyDiag } = result
+        const { brushNote, applied, ok: canvasOk } = canvasResult
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
-        const extraTools = parseToolsBlockFromReply(reply)
-        if (extraTools.length) {
-          placeToolsOnCanvas(svgEditor, extraTools)
-        }
-
-        if (svg) {
-          setSteps(3)
+        if (svg || brushNote) {
+          if (svg) setSteps(3)
           history.push({
             role: 'model',
-            text: compactModelHistory(reply, svg, applied.ok),
-            parts: [{ text: compactModelHistory(reply, svg, applied.ok) }]
+            text: compactModelHistory(reply, svg, canvasOk),
+            parts: [{ text: compactModelHistory(reply, svg, canvasOk) }]
           })
-          let msg = talk || (applied.ok
+          let msg = talk || (canvasOk
             ? (editSelection ? '✓ Updated selection.' : '✓ Drawn on the canvas.')
-            : 'SVG returned but could not apply.')
-          if (toolNote && applied.ok) {
-            msg = `${toolNote}\n\n${msg}`
+            : (brushNote || 'SVG returned but could not apply.'))
+          if (brushNote && canvasOk) {
+            msg = `${brushNote}\n\n${msg}`
+          } else if (brushNote && !svg) {
+            msg = brushNote
           }
           const row = appendMsg('model', msg)
           pushActionHistory({
             prompt: displayText,
             mode: editSelection ? 'edit-selection' : effectiveMode,
             svg: applied.ok ? svg : undefined,
-            note: applied.ok
-              ? (editSelection ? 'Edited selection' : 'Drawn on canvas')
-              : 'Apply failed'
+            note: canvasOk
+              ? (brushNote ? `${brushNote} ${editSelection ? 'Edited selection' : 'Drawn on canvas'}` : (editSelection ? 'Edited selection' : 'Drawn on canvas'))
+              : (brushNote || 'Apply failed')
           })
           setSteps(4)
-          if (!applied.ok) {
+          if (svg && !applied.ok) {
             const userMsg = formatUserFacingSvgError({
               ...replyDiag,
               ...(applied.details || {})
@@ -1037,24 +1062,9 @@ export default {
               ...(applied.details || {}),
               stage: 'apply-after-extract'
             }, { row })
+          } else if (brushNote && !svg) {
+            setStatus(brushNote)
           }
-          return
-        }
-
-        if (!svg && toolNote) {
-          history.push({
-            role: 'model',
-            text: `${toolNote}\n${(talk || '').slice(0, 500)}`,
-            parts: [{ text: `${toolNote}\n${(talk || '').slice(0, 500)}` }]
-          })
-          appendMsg('model', `${toolNote}\n\n${talk || ''}`.trim())
-          pushActionHistory({
-            prompt: displayText,
-            mode: effectiveMode,
-            note: toolNote
-          })
-          setSteps(4)
-          setStatus(toolNote)
           return
         }
 
@@ -1258,6 +1268,11 @@ export default {
               <span>${t(svgEditor, 'includeCanvas')}</span>
             </label>
             <label class="ai_check">
+              <input type="checkbox" id="ai_use_brushes" />
+              <span>${t(svgEditor, 'useBrushes')}</span>
+            </label>
+            <p class="ai_hint">${t(svgEditor, 'useBrushesHint')}</p>
+            <label class="ai_check">
               <input type="checkbox" id="ai_edit_selection" />
               <span>${t(svgEditor, 'editSelection')}</span>
             </label>
@@ -1297,6 +1312,13 @@ export default {
         syncTaskModeUi()
         const compareToggle = $id('ai_compare_on')
         if (compareToggle) compareToggle.checked = getCompareOn()
+        const brushesToggle = $id('ai_use_brushes')
+        if (brushesToggle) {
+          brushesToggle.checked = getUseBrushes()
+          brushesToggle.addEventListener('change', () => {
+            localStorage.setItem(LS_USE_BRUSHES, brushesToggle.checked ? '1' : '0')
+          })
+        }
         syncCompareUi()
 
         $click($id('tool_aichat'), () => {

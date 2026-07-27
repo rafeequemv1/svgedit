@@ -229,6 +229,24 @@ export const ptObjToArrMethod = (type, segItem) => {
 }
 
 /**
+ * DNA brush spine paths live inside a transformed <g shape="dna">; pathedit
+ * grips must include that transform or nodes appear offset from the stroke.
+ * @param {SVGPathElement|Element|null|undefined} pathElem
+ * @returns {SVGMatrix|null}
+ */
+const getDnaSpineGroupCtm = (pathElem) => {
+  if (!pathElem || pathElem.getAttribute?.('data-role') !== 'spine') return null
+  const group = pathElem.parentElement
+  if (group?.getAttribute?.('shape') !== 'dna') return null
+  if (!group.getAttribute('transform')?.trim()) return null
+  try {
+    return group.getCTM?.() || null
+  } catch (_) {
+    return null
+  }
+}
+
+/**
 * @function module:path.getGripPt
 * @param {Segment} seg
 * @param {module:math.XYObject} altPt
@@ -242,8 +260,11 @@ export const getGripPtMethod = (seg, altPt) => {
   }
 
   if (pth.matrix) {
-    const pt = transformPoint(out.x, out.y, pth.matrix)
-    out = pt
+    out = transformPoint(out.x, out.y, pth.matrix)
+  }
+  const dnaM = getDnaSpineGroupCtm(pth.elem)
+  if (dnaM) {
+    out = transformPoint(out.x, out.y, dnaM)
   }
   const zoom = svgCanvas.getZoom()
   out.x *= zoom
@@ -258,19 +279,25 @@ export const getGripPtMethod = (seg, altPt) => {
 * @returns {module:math.XYObject}
 */
 export const getPointFromGripMethod = (pt, pth) => {
-  const out = {
+  let out = {
     x: pt.x,
     y: pt.y
   }
 
-  if (pth.matrix) {
-    pt = transformPoint(out.x, out.y, pth.imatrix)
-    out.x = pt.x
-    out.y = pt.y
-  }
   const zoom = svgCanvas.getZoom()
   out.x /= zoom
   out.y /= zoom
+
+  const dnaM = getDnaSpineGroupCtm(pth.elem)
+  if (dnaM) {
+    try {
+      out = transformPoint(out.x, out.y, dnaM.inverse())
+    } catch (_) { /* keep out */ }
+  }
+
+  if (pth.matrix) {
+    out = transformPoint(out.x, out.y, pth.imatrix)
+  }
 
   return out
 }

@@ -37,31 +37,65 @@ export const EDITOR_TOOLS = [
 
 /**
  * Prompt section listing real editor tools for the model.
+ * @param {{ useBrushes?: boolean }} [opts]
  */
-export function buildEditorToolsPromptSection () {
+export function buildEditorToolsPromptSection (opts = {}) {
+  const useBrushes = opts.useBrushes === true
+  const w = opts.w ?? 640
+  const h = opts.h ?? 480
   const lines = [
-    '# SVGEdit tools (REAL — use these instead of faking with raw SVG when possible)',
-    'The host app can place live brush objects (editable in Properties). You know every left-toolbar tool:',
+    '# SVGEdit tools',
+    useBrushes
+      ? '**Generative brushes ON** — you orchestrate real toolbar brushes via a ```tools JSON block; the host places them, then applies your SVG. Combine brushes + SVG for hybrid figures (e.g. nanoparticle brush + SVG ligands).'
+      : '**Generative brushes OFF** — draw everything yourself in SVG. Do not emit ```tools``` blocks or rely on host brush placement.',
+    'You know every left-toolbar tool:',
     ''
   ]
   EDITOR_TOOLS.forEach((t) => {
     lines.push(`- ${t.label} (\`${t.id}\`, mode: ${t.mode || 'n/a'}): ${t.hint}`)
   })
-  lines.push(
-    '',
-    '## When user asks for DNA / plasmid / membrane / hydrogel / nanoparticle',
-    '- DNA helix / plasmid ring / "with DNA brush": host places **real DNA brush** (\`shape="dna"\`). Do NOT redraw helix as plain SVG paths.',
-    '- Plasmid vector map: host places circular DNA ring first; you add ONLY labels, leader lines, and colored arc annotations outside the ring.',
-    '- Lipid bilayer / membrane: host can place \`shape="lipidbilayer"\` — do not fake with circles only.',
-    '- Hydrogel mesh: host places \`shape="hydrogel"\`.',
-    '- Nanoparticle cluster: host places \`shape="nanoparticle"\`.',
-    '- Optional: emit a ```tools JSON block (before or after SVG) for extra placements:',
-    '```tools',
-    '[{"tool":"dna","points":[{"x":100,"y":200},{"x":300,"y":180}],"strandColor":"#2563eb"}]',
-    '```',
-    '- To hand off to user: say "Click **DNA helix** in the left toolbar (`tool_dna`) and drag a path."',
-    '- For interactive custom paths, activating the tool is better than fake SVG.'
-  )
+  if (useBrushes) {
+    lines.push(
+      '',
+      '## Generative brushes workflow (brushes ON)',
+      '1. Decide which motifs need a **real brush** (DNA helix, nanoparticle cluster, hydrogel mesh, lipid bilayer, curved arrow, 3D cube).',
+      '2. Emit a ```tools fence with a JSON array FIRST (before ```svg). The host places these on canvas.',
+      '3. Emit ```svg with ONLY what brushes cannot do: ligands, labels, arrows, boxes, small molecules, captions, extra decoration.',
+      '4. Do NOT redraw brush motifs as plain SVG when you listed them in ```tools.',
+      '',
+      '### ```tools JSON schema (canvas ' + w + '×' + h + ')',
+      '```tools',
+      '[',
+      '  {"tool":"nanoparticle","cx":' + Math.round(w / 2) + ',"cy":' + Math.round(h * 0.55) + ',"radius":110,"particleRadius":5,"spacing":12},',
+      '  {"tool":"dna","points":[{"x":80,"y":' + Math.round(h / 2) + '},{"x":' + (w - 80) + ',"y":' + Math.round(h / 2 - 40) + '}],"thickness":1.1,"strandColor":"#2563eb"},',
+      '  {"tool":"lipidbilayer","x1":60,"y1":' + Math.round(h / 2) + ',"x2":' + (w - 60) + ',"y2":' + Math.round(h / 2) + '},',
+      '  {"tool":"hydrogel","x":40,"y":60,"w":' + (w - 80) + ',"h":' + (h - 100) + ',"density":0.55},',
+      '  {"tool":"curvedarrow","ax":100,"ay":200,"cx":400,"cy":180,"stroke":"#333"}',
+      ']',
+      '```',
+      '',
+      '### Hybrid example — “big nanoparticle with ligands”',
+      '- ```tools`: one `nanoparticle` with larger `radius` (e.g. 100–140) centered where the core should sit.',
+      '- ```svg`: draw ligands as short cubic `<path>` arms, linker lines, and functional groups **around** that center — do not draw the particle core as circles.',
+      '',
+      '### Plasmid / circular DNA',
+      '- Use `dna` with `points` forming a circle (many `{x,y}` on a ring, or host accepts circular path via points).',
+      '- SVG: gene labels, leader lines, colored arc annotations **outside** the ring only.',
+      '',
+      '### When NOT to use ```tools',
+      '- Simple diagrams with no specialty brushes, pure flowcharts, icons, or when brushes OFF.',
+      '- User only wants to **activate** a tool to draw manually → say “Click DNA helix in the toolbar” (no ```tools).'
+    )
+  } else {
+    lines.push(
+      '',
+      '## Drawing specialty motifs (brushes OFF)',
+      '- DNA / helix: two smooth cubic `<path>` strands + short rung segments.',
+      '- Nanoparticle: circles or hex grid in SVG.',
+      '- Membrane / hydrogel: simplified cartoon SVG.',
+      '- Smooth curves: `<path d="M… C…">` cubic Bézier — never `<polyline>`.'
+    )
+  }
   return lines.join('\n')
 }
 
@@ -95,98 +129,90 @@ export function sinusoidPoints (w, h, amp = 50) {
 }
 
 /**
+ * Only handle explicit “activate/switch to tool” requests — not keyword auto-placement.
  * @param {string} prompt
+ */
+export function resolveToolActivateRequest (prompt) {
+  const text = String(prompt || '')
+  if (/\b(just|only)\s+(open|activate|use|switch)\b.*\b(dna|helix|nanoparticle|hydrogel|bilayer|membrane)\b.*\b(tool|brush)\b/i.test(text) ||
+      /\bswitch to (the )?(dna|nanoparticle|hydrogel|lipid|bilayer)\b/i.test(text)) {
+    let toolId = 'tool_dna'
+    let mode = 'dna'
+    if (/\bnanoparticle\b/i.test(text)) {
+      toolId = 'tool_nanoparticle'
+      mode = 'nanoparticle'
+    } else if (/\bhydrogel\b/i.test(text)) {
+      toolId = 'tool_hydrogel'
+      mode = 'hydrogel'
+    } else if (/\b(bilayer|membrane|lipid)\b/i.test(text)) {
+      toolId = 'tool_lipidbilayer'
+      mode = 'lipidbilayer'
+    }
+    return {
+      activate: { toolId, mode },
+      note: `${mode} tool activated — drag on the canvas to draw.`
+    }
+  }
+  return { activate: null, note: '' }
+}
+
+/**
+ * @param {string} prompt
+ * @param {{w:number,h:number}} [_canvasSize]
+ */
+export function resolveToolPlan (prompt, _canvasSize = { w: 640, h: 480 }) {
+  const { activate, note } = resolveToolActivateRequest(prompt)
+  return { placements: [], svgHint: '', activate, note }
+}
+
+/**
+ * Fill in canvas defaults for AI ```tools specs.
+ * @param {object[]} specs
  * @param {{w:number,h:number}} canvasSize
  */
-export function resolveToolPlan (prompt, canvasSize = { w: 640, h: 480 }) {
-  const text = String(prompt || '')
-  const p = text.toLowerCase()
-  const cx = canvasSize.w / 2
-  const cy = canvasSize.h / 2
-  /** @type {object[]} */
-  const placements = []
-  let svgHint = ''
-  let activate = null
-  let note = ''
+export function normalizeToolSpecs (specs, canvasSize = { w: 640, h: 480 }) {
+  const w = canvasSize.w || 640
+  const h = canvasSize.h || 480
+  const cx = w / 2
+  const cy = h / 2
+  return (specs || []).map((spec) => {
+    const tool = String(spec.tool || '').toLowerCase()
+    const out = { ...spec, tool }
+    if (tool === 'nanoparticle') {
+      out.cx = Number(spec.cx ?? cx)
+      out.cy = Number(spec.cy ?? cy)
+      out.radius = Number(spec.radius ?? Math.min(w, h) * 0.18)
+      if (spec.particleRadius != null) out.particleRadius = Number(spec.particleRadius)
+      if (spec.spacing != null) out.spacing = Number(spec.spacing)
+    }
+    if (tool === 'dna' && (!spec.points || spec.points.length < 2)) {
+      out.points = sinusoidPoints(w, h)
+    }
+    if (tool === 'hydrogel') {
+      const pad = 40
+      out.x = Number(spec.x ?? pad)
+      out.y = Number(spec.y ?? pad + 40)
+      out.w = Number(spec.w ?? w - pad * 2)
+      out.h = Number(spec.h ?? h - pad * 2 - 40)
+    }
+    if (tool === 'lipidbilayer') {
+      out.x1 = Number(spec.x1 ?? 80)
+      out.y1 = Number(spec.y1 ?? cy)
+      out.x2 = Number(spec.x2 ?? w - 80)
+      out.y2 = Number(spec.y2 ?? cy)
+    }
+    return out
+  })
+}
 
-  if (/\b(just|only)\s+(open|activate|use|switch)\b.*\b(dna|helix)\b.*\b(tool|brush)\b/i.test(text) ||
-      /\bswitch to (the )?dna\b/i.test(text)) {
-    activate = { toolId: 'tool_dna', mode: 'dna' }
-    note = 'DNA helix tool activated — drag on the canvas to draw.'
-    return { placements, svgHint, activate, note }
-  }
-
-  const wantsDnaBrush = /\b(dna|double helix|helix)\b.*\b(brush|tool)\b|\b(brush|tool)\b.*\b(dna|helix)\b|\bwith dna brush\b/i.test(p)
-  const wantsPlasmid = /\bplasmid\b|\bvector map\b|\brecombinant\b.*\bvector\b/i.test(p)
-
-  if (wantsPlasmid || (wantsDnaBrush && /\bplasmid\b|\bvector\b|\bcircular\b|\bring\b/i.test(p))) {
-    const r = Math.min(canvasSize.w, canvasSize.h) * 0.22
-    placements.push({
-      tool: 'dna',
-      points: circularPoints(cx, cy, r),
-      thickness: 1.1,
-      strandColor: '#2563eb',
-      rungColor: '#f59e0b',
-      showBasePairs: true
-    })
-    svgHint = `A real circular DNA helix (DNA brush object) is already on the canvas centered at (${Math.round(cx)},${Math.round(cy)}) with radius ~${Math.round(r)}. Do NOT redraw the helix with plain SVG paths or ladders. Return ONLY plasmid map annotations: title, gene/feature labels, leader lines, and colored arrow segments along the OUTSIDE of the ring. Keep SVG compact (≤45 elements). Put \`\`\`svg fence FIRST.`
-    note = 'Placed circular DNA with DNA helix brush.'
-    return { placements, svgHint, activate, note, usedDnaBrush: true }
-  }
-
-  if (wantsDnaBrush || (/\bdna\b|\bhelix\b/i.test(p) && /\bdraw\b|\bmake\b|\bcreate\b/i.test(p))) {
-    placements.push({
-      tool: 'dna',
-      points: sinusoidPoints(canvasSize.w, canvasSize.h),
-      thickness: 1,
-      strandColor: '#2563eb',
-      rungColor: '#f59e0b'
-    })
-    svgHint = 'Real DNA helix placed with the DNA brush. Do not redraw helix strands as SVG paths; add only optional labels if needed.'
-    note = 'Placed DNA helix with DNA brush.'
-    return { placements, svgHint, activate, note, usedDnaBrush: true }
-  }
-
-  if (/\bhydrogel\b|\bpolymer network\b|\bmesh\b.*\bgel\b/i.test(p)) {
-    const pad = 40
-    placements.push({
-      tool: 'hydrogel',
-      x: pad,
-      y: pad + 40,
-      w: canvasSize.w - pad * 2,
-      h: canvasSize.h - pad * 2 - 40
-    })
-    svgHint = 'Hydrogel brush region placed. Add only captions or arrows; do not redraw the mesh as SVG.'
-    note = 'Placed hydrogel brush.'
-    return { placements, svgHint, activate, note }
-  }
-
-  if (/\blipid\b|\bbilayer\b|\bmembrane cross/i.test(p)) {
-    placements.push({
-      tool: 'lipidbilayer',
-      x1: 80,
-      y1: cy,
-      x2: canvasSize.w - 80,
-      y2: cy
-    })
-    svgHint = 'Lipid bilayer brush placed. Add only labels; do not fake membrane heads as random circles.'
-    note = 'Placed lipid bilayer brush.'
-    return { placements, svgHint, activate, note }
-  }
-
-  if (/\bnanoparticle\b|\bnano\s*particle\b/i.test(p)) {
-    placements.push({
-      tool: 'nanoparticle',
-      cx,
-      cy,
-      radius: Math.min(canvasSize.w, canvasSize.h) * 0.18
-    })
-    svgHint = 'Nanoparticle brush placed. Add captions only if needed.'
-    note = 'Placed nanoparticle brush.'
-    return { placements, svgHint, activate, note }
-  }
-
-  return { placements, svgHint, activate, note }
+/**
+ * @param {Element[]} placed
+ * @param {object[]} specs
+ */
+export function formatBrushPlacementNote (placed, specs) {
+  if (!placed?.length) return ''
+  const names = specs.map((s) => String(s.tool || 'brush')).join(', ')
+  return `Placed ${placed.length} generative brush object(s): ${names}.`
 }
 
 /**
@@ -195,14 +221,17 @@ export function resolveToolPlan (prompt, canvasSize = { w: 640, h: 480 }) {
  */
 export function parseToolsBlockFromReply (text) {
   if (!text) return []
-  const m = text.match(/```tools?\s*([\s\S]*?)```/i)
-  if (!m?.[1]) return []
-  try {
-    const parsed = JSON.parse(m[1].trim())
-    return Array.isArray(parsed) ? parsed : (parsed?.tools || [])
-  } catch {
-    return []
+  const specs = []
+  const re = /```tools?\s*([\s\S]*?)```/gi
+  let m
+  while ((m = re.exec(text))) {
+    try {
+      const parsed = JSON.parse(m[1].trim())
+      const arr = Array.isArray(parsed) ? parsed : (parsed?.tools || [])
+      if (Array.isArray(arr)) specs.push(...arr)
+    } catch { /* skip bad block */ }
   }
+  return specs
 }
 
 /**
@@ -323,20 +352,20 @@ function placeOneTool (svgEditor, spec) {
   }
 
   if (tool === 'nanoparticle') {
-    const g = svgCanvas.addSVGElementsFromJson({
-      element: 'g',
-      attr: {
-        id: svgCanvas.getNextId(),
-        shape: 'nanoparticle',
-        'data-cx': spec.cx ?? 320,
-        'data-cy': spec.cy ?? 240,
-        'data-radius': spec.radius ?? 90,
-        fill: '#f9bc01',
-        stroke: '#333333',
-        'stroke-width': 0.8,
-        style: 'pointer-events:visiblePainted'
-      }
-    })
+    const attrs = {
+      id: svgCanvas.getNextId(),
+      shape: 'nanoparticle',
+      'data-cx': spec.cx ?? 320,
+      'data-cy': spec.cy ?? 240,
+      'data-radius': spec.radius ?? 90,
+      fill: spec.fill || '#f9bc01',
+      stroke: spec.stroke || '#333333',
+      'stroke-width': spec.strokeWidth ?? 0.8,
+      style: 'pointer-events:visiblePainted'
+    }
+    if (spec.spacing != null) attrs['data-spacing'] = String(spec.spacing)
+    if (spec.particleRadius != null) attrs['data-particle-radius'] = String(spec.particleRadius)
+    const g = svgCanvas.addSVGElementsFromJson({ element: 'g', attr: attrs })
     regenerateNanoparticle(g)
     return g
   }

@@ -1,4 +1,4 @@
-import { diagnoseAndSanitizeSvg } from './apply-svg.js'
+import { diagnoseAndSanitizeSvg, smoothAiImportedGraphics } from './apply-svg.js'
 
 /**
  * Progressive SVG reveal on canvas (client-side only — no extra AI cost).
@@ -112,6 +112,7 @@ export async function applySvgToCanvasAnimated (svgEditor, svgXml, mode, opts = 
     await delay(stepMs, signal)
   }
 
+  smoothAiImportedGraphics(svgEditor, g)
   svgCanvas.addCommandToHistory(batch)
   svgCanvas.selectOnly?.([g], true)
   svgCanvas.call?.('changed', [g])
@@ -177,6 +178,7 @@ export async function replaceSelectionWithSvg (svgEditor, svgXml, opts = {}) {
     await delay(stepMs, signal)
   }
 
+  smoothAiImportedGraphics(svgEditor, g)
   svgCanvas.addCommandToHistory(batch)
   svgCanvas.selectOnly?.([g], true)
   svgCanvas.call?.('changed', [g])

@@ -2,6 +2,62 @@
  * Apply AI-generated SVG to the editor canvas + system prompt for conversational drawing.
  */
 
+import { pathDToPolyline, pointsToSmoothPathD, SPINE_MAX_POINTS, SPINE_MIN_DIST } from '../ext-dna/dna-math.js'
+
+const LINE_ONLY_PATH = /[Ll]/
+const HAS_CURVE_CMD = /[CQcqAa]/
+
+/**
+ * Convert AI polylines / line-only paths to smooth cubic Bézier paths for pathedit.
+ * Skips procedural brush groups (`shape=…`) and spine/hit paths.
+ * @param {object} svgEditor
+ * @param {Element} [root]
+ */
+export function smoothAiImportedGraphics (svgEditor, root) {
+  const svgCanvas = svgEditor?.svgCanvas
+  if (!svgCanvas || !root) return
+
+  /** @type {Element[]} */
+  const targets = []
+  const walk = (node) => {
+    if (!node || node.nodeType !== 1) return
+    if (node.getAttribute?.('shape')) return
+    const role = node.getAttribute?.('data-role')
+    if (role === 'spine' || role === 'hit') return
+    const tag = node.tagName?.toLowerCase()
+    if (tag === 'polyline' || tag === 'line') {
+      targets.push(node)
+      return
+    }
+    if (tag === 'path') {
+      const d = node.getAttribute('d') || ''
+      if (d.length > 4 && LINE_ONLY_PATH.test(d) && !HAS_CURVE_CMD.test(d)) {
+        targets.push(node)
+      }
+      return
+    }
+    for (const ch of node.children) walk(ch)
+  }
+  walk(root)
+
+  for (const el of targets) {
+    try {
+      let pathEl = el
+      if (el.tagName?.toLowerCase() !== 'path') {
+        pathEl = svgCanvas.convertToPath(el)
+        if (!pathEl) continue
+      }
+      const pts = pathDToPolyline(pathEl.getAttribute('d') || '', 8)
+      if (pts.length < 3) continue
+      const smoothD = pointsToSmoothPathD(pts, {
+        minDist: SPINE_MIN_DIST,
+        maxPts: SPINE_MAX_POINTS
+      })
+      if (smoothD) pathEl.setAttribute('d', smoothD)
+    } catch (_) { /* keep original geometry */ }
+  }
+}
+
 /**
  * Pretty-print apply/diagnose details for the "More details" panel.
  * @param {object|null|undefined} details
@@ -244,6 +300,8 @@ export function applySvgToCanvas (svgEditor, svgXml, mode) {
       if (!ok) {
         return { ok: false, message: 'svgCanvas.setSvgString rejected the SVG', details }
       }
+      const root = svgCanvas.getSvgContent?.()
+      if (root) smoothAiImportedGraphics(svgEditor, root)
       svgEditor.updateCanvas?.(true)
       try { svgEditor.zoomChanged?.(window, 'canvas') } catch (_) { /* ignore */ }
       return { ok: true, details }
@@ -257,6 +315,7 @@ export function applySvgToCanvas (svgEditor, svgXml, mode) {
         details
       }
     }
+    smoothAiImportedGraphics(svgEditor, el)
     svgCanvas.selectOnly?.([el], true)
     svgCanvas.call?.('changed', [el])
     svgEditor.updateCanvas?.(false)
@@ -283,6 +342,7 @@ export function conversationalTextFromReply (text, svg) {
   }
   out = out
     .replace(/```(?:svg|xml)?\s*[\s\S]*?```/gi, '')
+    .replace(/```tools?\s*[\s\S]*?```/gi, '')
     .replace(/<\/?svg\b[\s\S]*$/i, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
@@ -367,10 +427,13 @@ import { buildEditorToolsPromptSection } from './place-tools.js'
 
 /**
  * Build system prompt: conversational assistant that knows every tool and draws when asked.
- * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string }} ctx
+ * @param {{ w: number, h: number, mode: string, includeCanvas: boolean, canvasSvg?: string, hasImages?: boolean, selectionSvg?: string, selectionSummary?: string, continuityNote?: string, useBrushes?: boolean }} ctx
  */
 export function buildSystemPrompt (ctx) {
-  const { w, h, mode, includeCanvas, canvasSvg, hasImages, selectionSvg, selectionSummary, continuityNote } = ctx
+  const {
+    w, h, mode, includeCanvas, canvasSvg, hasImages, selectionSvg, selectionSummary, continuityNote,
+    useBrushes = false
+  } = ctx
 
   let prompt = `You are the built-in AI assistant for SVGEdit (LabCanvas-style scientific SVG editor).
 You are conversational: chat naturally, retain prior turns, ask clarifying questions when needed, and explain editor tools when asked.
@@ -388,14 +451,16 @@ ${selectionSvg
     ? 'produce a full self-contained scene that can replace the document.'
     : 'produce a self-contained graphic that will be ADDED onto the existing canvas.'}
 - If you draw: put ONE complete <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"> … </svg> in your reply inside a \`\`\`svg fence.
-- CRITICAL — output limits: Put the full \`\`\`svg … \`\`\` block FIRST (before any caption). Keep SVG compact (≤80 elements). Close every tag; never emit </svg> while a <g> is still open.
+${useBrushes
+    ? '- **Generative brushes ON**: when the figure needs DNA/nanoparticle/hydrogel/bilayer brushes, emit a ```tools JSON array FIRST, then ```svg for everything else (ligands, labels, arrows). The host places brushes before SVG.\n'
+    : ''}- CRITICAL — output limits: Put fenced blocks FIRST (${useBrushes ? '```tools then ```svg' : '```svg'}) before any caption. Keep SVG compact (≤80 elements). Close every tag; never emit </svg> while a <g> is still open.
 - XML rules: In SVG text/attributes escape & as &amp;, < as &lt;. Example: "Geim &amp; Novoselov". Use Unicode subscripts (C₆₀) or &lt;sub&gt; in text only if needed.
 - Timelines / infographics: use a horizontal axis + compact cards (year + 1-line label + 0D/1D/2D/3D badge). Prefer ≤12 milestones so the SVG fits; group by dimension in columns if needed.
 - For DNA / molecules: use 2 smooth paths + ≤12 rung lines. No feDropShadow, feGaussianBlur, or heavy <filter> blocks (they cause truncation). Suggest the DNA helix brush for interactive paths.
 - Short caption AFTER the fence (1–2 sentences). Long intros before SVG often get the drawing cut off.
 - Pure Q&A / how-to / brainstorming: reply in text ONLY — do not invent SVG unless they asked to draw.
 - Follow-ups like "make it blue", "add a label", "move it left": build on prior turns; redraw or extend with SVG (prefer append/selection-edit semantics unless they say replace everything).
-- No scripts, foreignObject, external images/URLs, or HTML. Use path/rect/circle/ellipse/line/polygon/polyline/text/g (and nested groups). Marker defs for arrowheads are OK. Science-friendly colors (avoid neon purple). font-family="sans-serif" or "serif". Simple ids (ai_1…).
+- No scripts, foreignObject, external images/URLs, or HTML. Use path/rect/circle/ellipse/text/g (and nested groups). Prefer \`<path d="M… C…">\` with cubic Bézier for smooth curves — avoid \`<polyline>\` and line-only \`L\` paths so users can double-click to edit nodes. Marker defs for arrowheads are OK. Science-friendly colors (avoid neon purple). font-family="sans-serif" or "serif". Simple ids (ai_1…).
 - You can draw ANYTHING expressible as SVG. Never refuse a drawing request as "too complex" — simplify layout intelligently and still produce usable SVG. If unclear, ask one short clarifying question OR pick sensible defaults and say what you assumed.
 
 # What you can draw (anything SVG — non-exhaustive)
@@ -451,7 +516,7 @@ Diagram layout: margins, aligned columns, no overlapping labels, consistent gaps
 Helpful illustration partner for science and general diagrams: concise, clear. After drawing, offer a quick tip (edit nodes, Pathfinder, Align, or a specialized brush). If they ask for flowchart/mindmap/any SVG art — just draw it.
 `
 
-  prompt += `\n${buildEditorToolsPromptSection()}\n`
+  prompt += `\n${buildEditorToolsPromptSection({ useBrushes, w, h })}\n`
 
   if (continuityNote) {
     prompt += `\n${continuityNote}\n`

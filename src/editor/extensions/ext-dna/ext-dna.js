@@ -7,15 +7,21 @@
 
 import {
   DEFAULTS,
+  SPINE_MAX_POINTS,
+  SPINE_MIN_DIST,
   computeDnaGeometry,
   parsePoints,
+  pathDToPolyline,
   pointsToPathD,
   pointsToSmoothPathD,
-  serializePoints
+  serializePoints,
+  simplifyPoints
 } from './dna-math.js'
 
 const name = 'dna'
 const MODE = 'dna'
+/** Min px between samples while freehand drawing (reduces raw point count). */
+const DRAW_SAMPLE_MIN = 10
 
 const ATTR_KEYS = [
   'data-points',
@@ -491,15 +497,96 @@ export default {
       group?.querySelector?.(':scope > path[data-role="spine"]') ||
       group?.querySelector?.('path[data-role="spine"]')
 
+    /**
+     * SVGEdit pathedit grips use path-local coords and ignore parent <g> transform.
+     * Bake any group transform into spine `d` + helix geometry so nodes sit on the stroke.
+     * @returns {boolean} true if a transform was baked
+     */
+    const bakeDnaGroupTransform = (group) => {
+      if (!group || bakingTransform || regeneratingVisuals) return false
+      const tr = group.getAttribute('transform')
+      if (!tr || !/\S/.test(tr)) return false
+
+      let ctm = null
+      try {
+        const list = group.transform?.baseVal
+        if (list?.numberOfItems) ctm = list.consolidate()?.matrix || null
+      } catch (_) { /* keep null */ }
+      if (!ctm) return false
+
+      const spine = getSpine(group)
+      const attrs = readDnaAttrs(group)
+      let spineD = spine?.getAttribute('d') || attrs.spineD || resolveSpineD(attrs)
+      if (!spineD) return false
+
+      bakingTransform = true
+      regeneratingVisuals = true
+      try {
+        if (spine) {
+          spine.setAttribute('d', spineD)
+          spine.setAttribute('transform', tr)
+          group.removeAttribute('transform')
+          try {
+            svgCanvas.pathActions.resetOrientation(spine)
+            spineD = spine.getAttribute('d') || spineD
+          } catch (_) {
+            const pts = pathDToPolyline(spineD, 12).map((p) => ({
+              x: ctm.a * p.x + ctm.c * p.y + ctm.e,
+              y: ctm.b * p.x + ctm.d * p.y + ctm.f
+            }))
+            spineD = pointsToSmoothPathD(pts, {
+              minDist: SPINE_MIN_DIST,
+              maxPts: SPINE_MAX_POINTS
+            })
+            group.removeAttribute('transform')
+            spine.removeAttribute('transform')
+          }
+        } else {
+          group.removeAttribute('transform')
+        }
+
+        const scale = Math.sqrt(Math.abs(ctm.a * ctm.d - ctm.b * ctm.c)) || 1
+        let thickness = attrs.thickness
+        if (Number.isFinite(scale) && Math.abs(scale - 1) > 0.02) {
+          thickness = Math.min(2.4, Math.max(0.5, thickness * scale))
+        }
+
+        const pts = attrs.points || []
+        const mappedPts = pts.length
+          ? pts.map((p) => ({
+            x: ctm.a * p.x + ctm.c * p.y + ctm.e,
+            y: ctm.b * p.x + ctm.d * p.y + ctm.f
+          }))
+          : pathDToPolyline(spineD, 12)
+
+        regenerateDna(group, {
+          spineD,
+          points: mappedPts.length ? mappedPts : attrs.points,
+          thickness
+        }, { nextId })
+        group.setAttribute('data-spine-d', spineD)
+        svgCanvas.selectorManager.requestSelector(group)?.resize?.()
+        return true
+      } finally {
+        bakingTransform = false
+        regeneratingVisuals = false
+      }
+    }
+
     const ensureSpine = (group, { editing = false } = {}) => {
       if (!group) return null
       let spine = getSpine(group)
       const attrs = readDnaAttrs(group)
       const spineD = resolveSpineD(attrs)
-      if (!spineD) return null
+      if (!spineD && !spine?.getAttribute?.('d')) return null
       if (!spine) {
         regenerateDna(group, { spineD }, { nextId, editingSpine: editing })
         spine = getSpine(group)
+      } else if (editing) {
+        // Pathedit owns `d` — never rewrite from stored attrs on enter (avoids node jump).
+        const liveD = spine.getAttribute('d') || spineD
+        if (liveD) group.setAttribute('data-spine-d', liveD)
+        styleSpinePath(spine, true)
       } else {
         spine.setAttribute('d', spineD)
         styleSpinePath(spine, editing)
@@ -556,6 +643,8 @@ export default {
     }
 
     const beginSpineEdit = (group) => {
+      // Pathedit node grips ignore parent <g transform> — bake first.
+      bakeDnaGroupTransform(group)
       const spine = ensureSpine(group, { editing: true })
       if (!spine) return false
       spineEditLock = true
@@ -805,6 +894,7 @@ export default {
           // Ignore dblclick on path grips / selector chrome
           if (evt.target?.closest?.('#selectorParentGroup')) return
           evt.stopImmediatePropagation()
+          evt.stopPropagation()
           evt.preventDefault()
           beginSpineEdit(dna)
           syncPanelFromElem(dna)
@@ -893,7 +983,7 @@ export default {
         const x = opts.mouse_x / zoom
         const y = opts.mouse_y / zoom
         const last = drawPoints[drawPoints.length - 1]
-        if (!last || Math.hypot(x - last.x, y - last.y) < 4) {
+        if (!last || Math.hypot(x - last.x, y - last.y) < DRAW_SAMPLE_MIN) {
           return { started: true }
         }
         drawPoints.push({ x, y })
@@ -931,9 +1021,13 @@ export default {
         }
         const keep = len > 24 && drawPoints.length >= 2
         if (keep) {
-          const spineD = pointsToSmoothPathD(drawPoints)
+          const simplified = simplifyPoints(drawPoints, SPINE_MIN_DIST)
+          const spineD = pointsToSmoothPathD(simplified, {
+            minDist: SPINE_MIN_DIST,
+            maxPts: SPINE_MAX_POINTS
+          })
           regenerateDna(newFO, {
-            points: drawPoints,
+            points: simplified,
             spineD,
             ...readPanelParams()
           }, { nextId, smoothSpine: false })
@@ -1014,77 +1108,9 @@ export default {
         }
 
         const group = findDnaGroup(el)
-        if (!group) return
-        const tr = group.getAttribute('transform')
-        if (!tr || !/\S/.test(tr)) return
-
-        let ctm = null
-        try {
-          const list = group.transform?.baseVal
-          if (list && list.numberOfItems) {
-            ctm = list.consolidate()?.matrix || null
-          }
-        } catch (_) { /* keep null */ }
-        if (!ctm) return
-
-        const scale = Math.sqrt(Math.abs(ctm.a * ctm.d - ctm.b * ctm.c)) || 1
-        const attrs = readDnaAttrs(group)
-        let thickness = attrs.thickness
-        if (Number.isFinite(scale) && Math.abs(scale - 1) > 0.02) {
-          thickness = Math.min(2.4, Math.max(0.5, thickness * scale))
-        }
-
-        bakingTransform = true
-        regeneratingVisuals = true
-        try {
-          // Bake group transform into the editable spine path d
-          let spine = ensureSpine(group)
-          let spineD = attrs.spineD || resolveSpineD(attrs)
-          if (spine && spineD) {
-            spine.setAttribute('d', spineD)
-            spine.setAttribute('transform', tr)
-            group.removeAttribute('transform')
-            try {
-              svgCanvas.pathActions.resetOrientation(spine)
-              spineD = spine.getAttribute('d') || spineD
-            } catch (_) {
-              // Fallback: map legacy polyline points
-              const pts = attrs.points || []
-              const mapped = pts.map((p) => ({
-                x: ctm.a * p.x + ctm.c * p.y + ctm.e,
-                y: ctm.b * p.x + ctm.d * p.y + ctm.f
-              }))
-              spineD = pointsToSmoothPathD(mapped)
-              group.removeAttribute('transform')
-            }
-          } else {
-            const pts = attrs.points || []
-            const mapped = pts.map((p) => ({
-              x: ctm.a * p.x + ctm.c * p.y + ctm.e,
-              y: ctm.b * p.x + ctm.d * p.y + ctm.f
-            }))
-            spineD = pointsToSmoothPathD(mapped)
-            group.removeAttribute('transform')
-          }
-
-          const pts = attrs.points || []
-          const mappedPts = pts.length
-            ? pts.map((p) => ({
-              x: ctm.a * p.x + ctm.c * p.y + ctm.e,
-              y: ctm.b * p.x + ctm.d * p.y + ctm.f
-            }))
-            : []
-
-          regenerateDna(group, {
-            spineD,
-            points: mappedPts.length ? mappedPts : attrs.points,
-            thickness
-          }, { nextId })
+        if (!group || editingSpineGroup) return
+        if (bakeDnaGroupTransform(group)) {
           syncPanelFromElem(group)
-          svgCanvas.selectorManager.requestSelector(group)?.resize?.()
-        } finally {
-          bakingTransform = false
-          regeneratingVisuals = false
         }
       }
     }

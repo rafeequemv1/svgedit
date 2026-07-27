@@ -1256,7 +1256,12 @@ const findPathEditableElement = (node) => {
     if (cur.nodeType === 1) {
       const tag = cur.tagName
       if (tag === 'text') return cur
-      if (PATH_EDITABLE_TAGS.has(tag)) return cur
+      if (PATH_EDITABLE_TAGS.has(tag)) {
+        // Procedural brushes (DNA, hydrogel, …) only expose spine for pathedit
+        const brush = cur.closest?.('[shape]')
+        if (brush && cur.getAttribute('data-role') !== 'spine') return null
+        return cur
+      }
       // Procedural brush groups keep their own dblclick handlers
       if (tag === 'g' && cur.getAttribute('shape')) return null
     }

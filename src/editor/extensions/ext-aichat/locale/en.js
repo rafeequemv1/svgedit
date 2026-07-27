@@ -25,6 +25,8 @@ export default {
   modeReplace: 'Replace canvas',
   modeAppend: 'Add to canvas',
   includeCanvas: 'Send current SVG as context',
+  useBrushes: 'Use generative brushes (DNA, nanoparticle, hydrogel…)',
+  useBrushesHint: 'Off (default): AI draws plain SVG only. On: AI plans real brushes via a ```tools block and draws the rest in SVG (e.g. nanoparticle brush + SVG ligands).',
   placeholder: 'Chat, paste images (Ctrl+V), or ask to draw anything…',
   placeholderImage: 'Describe the image to generate…',
   placeholderIcon: 'e.g. antibody, mitochondrion, PCR tube…',

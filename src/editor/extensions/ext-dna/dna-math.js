@@ -152,12 +152,18 @@ export const pointsToPathD = (verts) => {
   return d
 }
 
+/** Default minimum spacing between spine edit anchors (screen px). */
+export const SPINE_MIN_DIST = 28
+
+/** Max anchor points on the editable Bézier spine after simplification. */
+export const SPINE_MAX_POINTS = 20
+
 /**
  * Thin freehand points so the editable spine has a manageable node count.
  * @param {{x:number,y:number}[]} verts
- * @param {number} [minDist=16]
+ * @param {number} [minDist=SPINE_MIN_DIST]
  */
-export const simplifyPoints = (verts, minDist = 16) => {
+export const simplifyPoints = (verts, minDist = SPINE_MIN_DIST) => {
   if (!verts || verts.length < 2) return verts || []
   const out = [verts[0]]
   for (let i = 1; i < verts.length - 1; i++) {
@@ -180,11 +186,17 @@ export const simplifyPoints = (verts, minDist = 16) => {
  * Freehand points → smooth cubic Bézier path (Catmull–Rom → cubic).
  * Double-click spine edit then shows normal SVGEdit Bézier handles.
  * @param {{x:number,y:number}[]} verts
- * @param {{minDist?:number}} [opts]
+ * @param {{minDist?:number, maxPts?:number}} [opts]
  * @returns {string}
  */
 export const pointsToSmoothPathD = (verts, opts = {}) => {
-  const pts = simplifyPoints(verts, opts.minDist ?? 16)
+  const maxPts = opts.maxPts ?? SPINE_MAX_POINTS
+  let minDist = opts.minDist ?? SPINE_MIN_DIST
+  let pts = simplifyPoints(verts, minDist)
+  while (pts.length > maxPts && minDist < 160) {
+    minDist += 10
+    pts = simplifyPoints(verts, minDist)
+  }
   if (pts.length < 2) return pointsToPathD(pts)
   if (pts.length === 2) return pointsToPathD(pts)
   let d = `M${pts[0].x} ${pts[0].y}`
