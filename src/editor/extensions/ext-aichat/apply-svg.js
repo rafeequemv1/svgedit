@@ -49,6 +49,9 @@ export function formatUserFacingSvgError (details, message) {
   if (truncated) {
     return 'The drawing was cut off before the SVG finished (too much detail for one reply). Retrying with a simpler version, or ask for “simple DNA helix, no shadows”.'
   }
+  if (d.parserError && /xmlParseEntityRef|entityref|no name/i.test(String(d.parserError))) {
+    return 'The SVG had unescaped "&" characters in text (use &amp; in SVG, e.g. "Geim &amp; Novoselov"). Retrying with fixes…'
+  }
   if (d.parserError) {
     return 'The SVG in the reply had invalid XML. Try again or ask for a simpler drawing.'
   }
@@ -64,7 +67,18 @@ export function looksLikeTruncatedSvg (details) {
     (d.hasFenceOpen && !d.hasFenceClose) ||
     d.salvagedClose ||
     d.finishReason === 'MAX_TOKENS' ||
-    /mismatch|Opening and ending tag/i.test(String(d.parserError || ''))
+    /mismatch|Opening and ending tag|xmlParseEntityRef|entityref/i.test(String(d.parserError || ''))
+  )
+}
+
+/**
+ * Escape bare & in XML/SVG (common model mistake: "Geim & Novoselov").
+ * @param {string} xml
+ */
+export function escapeInvalidXmlEntities (xml) {
+  return String(xml || '').replace(
+    /&(?!(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);)/g,
+    '&amp;'
   )
 }
 
@@ -95,6 +109,8 @@ export function diagnoseAndSanitizeSvg (svgXml) {
     .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
     .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '')
 
+  xml = escapeInvalidXmlEntities(xml)
+
   // Salvage truncated markup
   if (!/<\/svg>\s*$/i.test(xml)) {
     xml = xml.replace(/<[^>]*$/m, '')
@@ -112,6 +128,15 @@ export function diagnoseAndSanitizeSvg (svgXml) {
       details.salvagedParse = true
       doc = new DOMParser().parseFromString(xml, 'image/svg+xml')
       err = doc.querySelector('parsererror')
+    }
+    if (err && /entityref|no name/i.test(err.textContent || '')) {
+      const escaped = escapeInvalidXmlEntities(xml)
+      if (escaped !== xml) {
+        xml = escaped
+        details.fixedEntities = true
+        doc = new DOMParser().parseFromString(xml, 'image/svg+xml')
+        err = doc.querySelector('parsererror')
+      }
     }
   }
   if (err) {
@@ -364,6 +389,8 @@ ${selectionSvg
     : 'produce a self-contained graphic that will be ADDED onto the existing canvas.'}
 - If you draw: put ONE complete <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"> … </svg> in your reply inside a \`\`\`svg fence.
 - CRITICAL — output limits: Put the full \`\`\`svg … \`\`\` block FIRST (before any caption). Keep SVG compact (≤80 elements). Close every tag; never emit </svg> while a <g> is still open.
+- XML rules: In SVG text/attributes escape & as &amp;, < as &lt;. Example: "Geim &amp; Novoselov". Use Unicode subscripts (C₆₀) or &lt;sub&gt; in text only if needed.
+- Timelines / infographics: use a horizontal axis + compact cards (year + 1-line label + 0D/1D/2D/3D badge). Prefer ≤12 milestones so the SVG fits; group by dimension in columns if needed.
 - For DNA / molecules: use 2 smooth paths + ≤12 rung lines. No feDropShadow, feGaussianBlur, or heavy <filter> blocks (they cause truncation). Suggest the DNA helix brush for interactive paths.
 - Short caption AFTER the fence (1–2 sentences). Long intros before SVG often get the drawing cut off.
 - Pure Q&A / how-to / brainstorming: reply in text ONLY — do not invent SVG unless they asked to draw.

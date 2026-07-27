@@ -980,12 +980,13 @@ export default {
           return { reply: replyText, svg: svgOut, talk: talkOut, applied, diag }
         }
 
-        const retryNote = 'Previous SVG was truncated or had invalid XML. Output a SIMPLER drawing: ```svg block first, no filters/shadows, ≤40 elements, all tags closed.'
+        const retryNote = 'Previous SVG was truncated or had invalid XML. Output a SIMPLER drawing: ```svg block first, no filters/shadows, ≤40 elements, all tags closed, escape every & as &amp; in text.'
         let result = await drawOnce(systemInstruction, contents, '')
         if (
           !result.applied.ok &&
           result.svg &&
-          looksLikeTruncatedSvg({ ...result.diag, ...(result.applied.details || {}) })
+          (looksLikeTruncatedSvg({ ...result.diag, ...(result.applied.details || {}) }) ||
+            /entityref|xmlParseEntityRef/i.test(String(result.applied.details?.parserError || result.applied.message || '')))
         ) {
           setSteps(2, 'Retrying simpler SVG…')
           setStatus(t(svgEditor, 'svgRetry'))
