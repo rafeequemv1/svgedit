@@ -384,12 +384,24 @@ function fadeInElement (el, ms = 280) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       el.style.opacity = '1'
+      // Clear animation styles so SVG-Edit selection/move works normally
+      setTimeout(() => {
+        try {
+          el.style.removeProperty('opacity')
+          el.style.removeProperty('transition')
+          el.querySelectorAll('[style]').forEach((n) => {
+            n.style.removeProperty('opacity')
+            n.style.removeProperty('transition')
+          })
+        } catch (_) { /* ignore */ }
+      }, ms + 40)
     })
   })
 }
 
 /**
- * Place an SVG fragment into a positioned nested <svg> box with progressive child reveal.
+ * Place an SVG fragment as a movable <g> (not nested <svg>).
+ * Nested svg x/y breaks SVG-Edit drag (jump-back); groups transform cleanly.
  */
 export async function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
   const { signal, stepMs = 28, onProgress } = opts
@@ -412,28 +424,55 @@ export async function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
     svgCanvas.getCurrentDrawing?.()?.getCurrentLayer?.()
   if (!parent) return { ok: false, message: 'No layer' }
 
-  const vb = src.getAttribute('viewBox') ||
-    `0 0 ${src.getAttribute('width') || box.w} ${src.getAttribute('height') || box.h}`
+  const vbRaw = src.getAttribute('viewBox')
+  let vbX = 0
+  let vbY = 0
+  let vbW = Number(src.getAttribute('width')) || box.w
+  let vbH = Number(src.getAttribute('height')) || box.h
+  if (vbRaw) {
+    const parts = vbRaw.trim().split(/[\s,]+/).map(Number)
+    if (parts.length === 4 && parts.every((n) => !Number.isNaN(n))) {
+      ;[vbX, vbY, vbW, vbH] = parts
+    }
+  }
+  vbW = Math.max(1, vbW)
+  vbH = Math.max(1, vbH)
+  const sx = box.w / vbW
+  const sy = box.h / vbH
 
   const batch = new BatchCommand('AI Max SVG')
-  const nest = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'svg')
-  nest.setAttribute('id', svgCanvas.getNextId())
-  nest.setAttribute('x', String(box.x))
-  nest.setAttribute('y', String(box.y))
-  nest.setAttribute('width', String(box.w))
-  nest.setAttribute('height', String(box.h))
-  nest.setAttribute('viewBox', vb)
-  nest.setAttribute('overflow', 'visible')
-  nest.setAttribute('data-ai-max', opts.role || 'svg')
-  parent.append(nest)
-  batch.addSubCommand(new InsertElementCommand(nest))
+  const g = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'g')
+  g.setAttribute('id', svgCanvas.getNextId())
+  g.setAttribute('data-ai-max', opts.role || 'svg')
+  // Position via translate+scale so move/resize use transforms SVG-Edit understands
+  g.setAttribute('transform', `translate(${box.x},${box.y}) scale(${sx},${sy}) translate(${-vbX},${-vbY})`)
+
+  // Clip to the box so text/shapes respect boundaries
+  const clipId = `${g.getAttribute('id')}_clip`
+  const defs = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'defs')
+  const clip = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'clipPath')
+  clip.setAttribute('id', clipId)
+  const clipRect = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'rect')
+  clipRect.setAttribute('x', String(vbX))
+  clipRect.setAttribute('y', String(vbY))
+  clipRect.setAttribute('width', String(vbW))
+  clipRect.setAttribute('height', String(vbH))
+  clip.append(clipRect)
+  defs.append(clip)
+  g.append(defs)
+
+  const content = svgCanvas.getDOMDocument().createElementNS(NS_SVG, 'g')
+  content.setAttribute('clip-path', `url(#${clipId})`)
+  g.append(content)
+  parent.append(g)
+  batch.addSubCommand(new InsertElementCommand(g))
 
   const kids = [...src.children].filter((c) => c.nodeType === 1)
-  const defs = kids.filter((c) => c.tagName?.toLowerCase() === 'defs')
+  const srcDefs = kids.filter((c) => c.tagName?.toLowerCase() === 'defs')
   const rest = kids.filter((c) => c.tagName?.toLowerCase() !== 'defs')
 
-  for (const d of defs) {
-    nest.append(svgCanvas.getDOMDocument().importNode(d, true))
+  for (const d of srcDefs) {
+    content.append(svgCanvas.getDOMDocument().importNode(d, true))
   }
 
   const total = Math.max(1, rest.length)
@@ -443,7 +482,7 @@ export async function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
     const node = svgCanvas.getDOMDocument().importNode(child, true)
     node.style.opacity = '0'
     node.style.transition = 'opacity 160ms ease'
-    nest.append(node)
+    content.append(node)
     requestAnimationFrame(() => { node.style.opacity = '1' })
     i++
     onProgress?.({ index: i, total, label: `Drawing ${i}/${total}` })
@@ -451,11 +490,19 @@ export async function placeSvgInBox (svgEditor, svgXml, box, opts = {}) {
     await delay(stepMs, signal)
   }
 
+  // Strip transient animation styles
+  content.querySelectorAll('*').forEach((n) => {
+    try {
+      n.style?.removeProperty?.('opacity')
+      n.style?.removeProperty?.('transition')
+    } catch (_) { /* ignore */ }
+  })
+
   svgCanvas.addCommandToHistory(batch)
-  svgCanvas.selectOnly?.([nest], true)
-  svgCanvas.call?.('changed', [nest])
+  svgCanvas.selectOnly?.([g], true)
+  svgCanvas.call?.('changed', [g])
   paint(svgEditor)
-  return { ok: true, element: nest }
+  return { ok: true, element: g }
 }
 
 function buildSvgPieceSystemPrompt (box, role) {
@@ -484,10 +531,16 @@ export function buildStructuralSvgFallback (item, planTitle = '') {
     const headerH = Math.min(120, Math.max(72, Math.round(h * 0.14)))
     const main = planTitle || title
     const fs = Math.min(26, Math.max(16, Math.round(w / 48)))
+    const maxChars = Math.max(12, Math.floor((w - 80) / (fs * 0.55)))
+    const mainSafe = String(main).length > maxChars ? `${String(main).slice(0, maxChars - 1)}…` : String(main)
+    const clipId = `${uid}bg`
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <defs><clipPath id="${clipId}"><rect x="0" y="0" width="${w}" height="${headerH}"/></clipPath></defs>
   <rect width="${w}" height="${h}" fill="#eef2f6"/>
   <rect width="${w}" height="${headerH}" fill="#0f2744"/>
-  <text x="40" y="${Math.round(headerH * 0.62)}" fill="#ffffff" font-family="sans-serif" font-size="${fs}" font-weight="700">${escapeXml(String(main).slice(0, 68))}</text>
+  <g clip-path="url(#${clipId})">
+    <text x="40" y="${Math.round(headerH * 0.62)}" fill="#ffffff" font-family="sans-serif" font-size="${fs}" font-weight="700">${escapeXml(mainSafe)}</text>
+  </g>
 </svg>`
   }
 
@@ -500,12 +553,18 @@ export function buildStructuralSvgFallback (item, planTitle = '') {
 </svg>`
   }
 
-  // Single panel / card frame — no junk id labels
+  // Single panel / card frame — title clipped inside card
   if (roleL.includes('frame') || idL.includes('frame') || roleL.includes('panel') || idL.includes('panel')) {
     const heading = String(item.displayTitle || '').trim()
+    const maxChars = Math.max(8, Math.floor((w - 36) / 8))
+    const headingSafe = heading.length > maxChars ? `${heading.slice(0, maxChars - 1)}…` : heading
+    const clipId = `${uid}p`
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">
+  <defs><clipPath id="${clipId}"><rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="16"/></clipPath></defs>
   <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="16" fill="#ffffff" stroke="#d8dee6" stroke-width="1.5"/>
-  ${heading ? `<text x="18" y="32" fill="#0f2744" font-family="sans-serif" font-size="14" font-weight="700">${escapeXml(heading.slice(0, 42))}</text>` : ''}
+  <g clip-path="url(#${clipId})">
+    ${headingSafe ? `<text x="18" y="32" fill="#0f2744" font-family="sans-serif" font-size="14" font-weight="700">${escapeXml(headingSafe)}</text>` : ''}
+  </g>
 </svg>`
   }
 
@@ -526,16 +585,21 @@ export function buildStructuralSvgFallback (item, planTitle = '') {
     const rows = Array.isArray(lines) && lines.length
       ? lines.map((l) => String(l).trim()).filter(Boolean).slice(0, 5)
       : [title]
-    let texts = ''
-    rows.forEach((line, i) => {
+    const maxChars = Math.max(8, Math.floor(w / 7.2))
+    const wrapped = []
+    rows.forEach((line) => {
+      wrapLines(String(line), maxChars).forEach((ln) => wrapped.push(ln))
+    })
+    const clipId = `${uid}c`
+    let texts = `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="${w}" height="${h}"/></clipPath></defs>`
+    texts += `<g clip-path="url(#${clipId})">`
+    wrapped.slice(0, Math.max(1, Math.floor((h - 8) / 18))).forEach((line, i) => {
       const weight = i === 0 ? '700' : '400'
       const size = i === 0 ? 13 : 12
       const fill = i === 0 ? '#0f2744' : '#475569'
-      const clipped = String(line).length > Math.floor(w / 7)
-        ? `${String(line).slice(0, Math.max(4, Math.floor(w / 7) - 1))}…`
-        : String(line)
-      texts += `<text x="0" y="${18 + i * 20}" fill="${fill}" font-family="sans-serif" font-size="${size}" font-weight="${weight}">${escapeXml(clipped)}</text>\n`
+      texts += `<text x="0" y="${16 + i * 18}" fill="${fill}" font-family="sans-serif" font-size="${size}" font-weight="${weight}">${escapeXml(line)}</text>`
     })
+    texts += '</g>'
     return `<svg xmlns="${NS_SVG}" viewBox="0 0 ${w} ${h}">${texts}</svg>`
   }
 
@@ -565,6 +629,24 @@ function looksLikeIdLabel (s) {
   if (t === 'bg' || t === 'flow' || t.includes('_')) return true
   if (/^(panels?|layout|header|caption|label|arrow|frame|annotation)\b/.test(t) && t.length < 24) return true
   return false
+}
+
+function wrapLines (text, maxChars) {
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+  if (!words.length) return []
+  const lines = []
+  let cur = ''
+  words.forEach((word) => {
+    const next = cur ? `${cur} ${word}` : word
+    if (next.length <= maxChars) {
+      cur = next
+    } else {
+      if (cur) lines.push(cur)
+      cur = word.length > maxChars ? `${word.slice(0, maxChars - 1)}…` : word
+    }
+  })
+  if (cur) lines.push(cur)
+  return lines
 }
 
 function extractShortTitle (prompt, id) {
@@ -827,6 +909,7 @@ export async function runMaxMode (ctx) {
   for (const g of guides.values()) removeGuide(g)
 
   onStep?.(4, 'Done')
+  try { svgCanvas.clearSelection?.() } catch (_) { /* ignore */ }
   paint(svgEditor)
   return {
     plan,

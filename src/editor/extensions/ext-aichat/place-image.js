@@ -3,7 +3,9 @@
  */
 
 /**
- * Remove near-white background → transparent PNG (for BioRender-style icons).
+ * Remove near-white background → transparent PNG.
+ * Only clears white connected to the image edges (flood-fill), so white
+ * inside the subject is preserved.
  * @param {string} dataUrl
  * @param {number} [threshold=248]
  * @returns {Promise<string>}
@@ -13,24 +15,55 @@ export function knockOutWhiteBackground (dataUrl, threshold = 248) {
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
-      canvas.width = img.naturalWidth || img.width
-      canvas.height = img.naturalHeight || img.height
+      const w = img.naturalWidth || img.width
+      const h = img.naturalHeight || img.height
+      canvas.width = w
+      canvas.height = h
       const ctx = canvas.getContext('2d')
       if (!ctx) {
         resolve(dataUrl)
         return
       }
       ctx.drawImage(img, 0, 0)
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const imageData = ctx.getImageData(0, 0, w, h)
       const { data } = imageData
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]
-        const g = data[i + 1]
-        const b = data[i + 2]
-        if (r >= threshold && g >= threshold && b >= threshold) {
-          data[i + 3] = 0
-        }
+      const isBg = (idx) => {
+        const i = idx * 4
+        return data[i] >= threshold && data[i + 1] >= threshold && data[i + 2] >= threshold && data[i + 3] > 0
       }
+
+      const visited = new Uint8Array(w * h)
+      const queue = []
+      const push = (x, y) => {
+        if (x < 0 || y < 0 || x >= w || y >= h) return
+        const idx = y * w + x
+        if (visited[idx]) return
+        if (!isBg(idx)) return
+        visited[idx] = 1
+        queue.push(idx)
+      }
+
+      // Seed from all four edges
+      for (let x = 0; x < w; x++) {
+        push(x, 0)
+        push(x, h - 1)
+      }
+      for (let y = 0; y < h; y++) {
+        push(0, y)
+        push(w - 1, y)
+      }
+
+      while (queue.length) {
+        const idx = queue.pop()
+        data[idx * 4 + 3] = 0 // transparent
+        const x = idx % w
+        const y = (idx - x) / w
+        push(x + 1, y)
+        push(x - 1, y)
+        push(x, y + 1)
+        push(x, y - 1)
+      }
+
       ctx.putImageData(imageData, 0, 0)
       resolve(canvas.toDataURL('image/png'))
     }
