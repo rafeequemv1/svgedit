@@ -31,7 +31,10 @@ export const EDITOR_TOOLS = [
   { id: 'tool_shapelib', mode: 'shapelib', label: 'Shapes library', hint: 'Preset icon packs (flowchart, math, etc.)' },
   { id: 'tool_connect', mode: 'connector', label: 'Connector', hint: 'Smart connectors between shapes' },
   { id: 'tool_eyedropper', mode: 'eyedropper', label: 'Eyedropper', hint: 'Sample colors' },
-  { id: 'tool_pathfinder_union', mode: null, label: 'Pathfinder unite', hint: 'Boolean on 2+ selected shapes' },
+  { id: 'tool_pathfinder_union', mode: null, label: 'Pathfinder Union', hint: 'Combine 2+ selected shapes' },
+  { id: 'tool_pathfinder_subtract', mode: null, label: 'Pathfinder Minus Front', hint: 'Subtract frontmost from shapes behind' },
+  { id: 'tool_pathfinder_intersect', mode: null, label: 'Pathfinder Intersect', hint: 'Keep only overlapping area' },
+  { id: 'tool_pathfinder_exclude', mode: null, label: 'Pathfinder Exclude', hint: 'Keep non-overlapping areas (XOR)' },
   { id: 'tool_aichat', mode: null, label: 'AI Chat', hint: 'This panel' }
 ]
 

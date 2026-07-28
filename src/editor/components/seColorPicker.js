@@ -6,6 +6,30 @@ import { t } from '../locale.js'
 const template = document.createElement('template')
 template.innerHTML = `
   <style>
+  /* Dark brand scrollbars inside color picker */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.38);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
   .jPicker .Icon {
     display: inline-block;
     height: 24px;

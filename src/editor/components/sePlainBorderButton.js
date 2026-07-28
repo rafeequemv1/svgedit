@@ -18,8 +18,11 @@ class SePlainBorderButton extends PlainButton {
       fragmentFrom.html`
         <style>
           [part~="button"] {
-            background: var(--main-bg-color);
-            border: 1px solid #ccc;
+            background: transparent;
+            border: none;
+            color: inherit;
+            min-height: 28px;
+            padding: 0 2px;
           }
         </style>
       `

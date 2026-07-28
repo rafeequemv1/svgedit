@@ -57,14 +57,22 @@ export default {
 
     await loadExtensionTranslation(svgEditor)
 
-    const showPanel = (on) => {
-      const panel = $id('pathfinder_panel')
-      if (!panel) return
-      if (on) {
-        panel.style.removeProperty('display')
-      } else {
-        panel.style.display = 'none'
-      }
+    const PATHFINDER_TOOL_IDS = [
+      'tool_pathfinder_union',
+      'tool_pathfinder_subtract',
+      'tool_pathfinder_intersect',
+      'tool_pathfinder_exclude'
+    ]
+
+    /**
+     * @param {boolean} enabled
+     * @returns {void}
+     */
+    const setToolsEnabled = (enabled) => {
+      PATHFINDER_TOOL_IDS.forEach((id) => {
+        const btn = $id(id)
+        if (btn) btn.disabled = !enabled
+      })
     }
 
     /**
@@ -72,6 +80,9 @@ export default {
      * @returns {void}
      */
     const runPathfinder = (op) => {
+      const tool = $id(`tool_pathfinder_${op}`)
+      if (tool?.disabled) return
+
       const selected = svgCanvas.getSelectedElements().filter(Boolean)
       if (selected.length < 2) {
         seAlert(svgEditor.i18next.t(`${name}:need_two_shapes`))
@@ -154,27 +165,25 @@ export default {
       callback () {
         const panelTemplate = document.createElement('template')
         panelTemplate.innerHTML = `
-          <div id="pathfinder_panel" class="pathfinder_panel right_panel_section" style="display:none">
-            <div class="extension_panel_heading">${svgEditor.i18next.t(`${name}:panel_label`)}</div>
-            <div class="pathfinder_tools">
-              <se-button id="tool_pathfinder_union" title="${name}:union_title" src="pathfinder_union.svg"></se-button>
-              <se-button id="tool_pathfinder_subtract" title="${name}:subtract_title" src="pathfinder_subtract.svg"></se-button>
-              <se-button id="tool_pathfinder_intersect" title="${name}:intersect_title" src="pathfinder_intersect.svg"></se-button>
-              <se-button id="tool_pathfinder_exclude" title="${name}:exclude_title" src="pathfinder_exclude.svg"></se-button>
-            </div>
+          <div id="pathfinder_panel" class="pathfinder_top_panel">
+            <div class="tool_sep"></div>
+            <se-button id="tool_pathfinder_union" title="${name}:union_title" src="pathfinder_union.svg" disabled></se-button>
+            <se-button id="tool_pathfinder_subtract" title="${name}:subtract_title" src="pathfinder_subtract.svg" disabled></se-button>
+            <se-button id="tool_pathfinder_intersect" title="${name}:intersect_title" src="pathfinder_intersect.svg" disabled></se-button>
+            <se-button id="tool_pathfinder_exclude" title="${name}:exclude_title" src="pathfinder_exclude.svg" disabled></se-button>
           </div>
         `
-        $id('right_align_extensions').appendChild(panelTemplate.content.cloneNode(true))
+        $id('tools_top').appendChild(panelTemplate.content.cloneNode(true))
         $click($id('tool_pathfinder_union'), () => runPathfinder('union'))
         $click($id('tool_pathfinder_subtract'), () => runPathfinder('subtract'))
         $click($id('tool_pathfinder_intersect'), () => runPathfinder('intersect'))
         $click($id('tool_pathfinder_exclude'), () => runPathfinder('exclude'))
+        setToolsEnabled(false)
       },
       selectedChanged (opts) {
         const elems = opts.elems?.filter(Boolean) || []
-        const count = elems.length
-        const ok = count >= 2 && elems.every(isPathfinderShape)
-        showPanel(ok)
+        const ok = elems.length >= 2 && elems.every(isPathfinderShape)
+        setToolsEnabled(ok)
       }
     }
   }

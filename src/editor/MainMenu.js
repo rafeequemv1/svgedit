@@ -230,12 +230,18 @@ class MainMenu {
     // add Top panel
     const template = document.createElement('template')
     template.innerHTML = `
-    <se-menu id="main_button" label="SVG-Edit" src="logo.svg" alt="logo">
+    <div id="app_menubar" class="app_menubar">
+      <div id="app_brand" class="app_brand" title="SVG-Edit">
+        <img src="${this.editor.configObj.curConfig.imgPath}/logo.svg" width="20" height="20" alt="" />
+        <span>SVG-Edit</span>
+      </div>
+      <se-menu id="main_button" label="File">
         <se-menu-item id="tool_export" label="tools.export_img" src="export.svg"></se-menu-item>
         <se-menu-item id="tool_docprops" label="tools.docprops" shortcut="shift+D" src="docprop.svg"></se-menu-item>
         <se-menu-item id="tool_editor_prefs" label="config.editor_prefs" src="editPref.svg"></se-menu-item>
         <se-menu-item id="tool_editor_homepage" label="tools.editor_homepage" src="logo.svg"></se-menu-item>
-    </se-menu>`
+      </se-menu>
+    </div>`
     this.editor.$svgEditor.append(template.content.cloneNode(true))
 
     // register action to main menu entries

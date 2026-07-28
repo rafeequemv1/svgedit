@@ -216,10 +216,6 @@ class BottomPanel {
     $id('fill_color').addEventListener('change', evt =>
       this.handleColorPicker.bind(this)('fill', evt)
     )
-    $id('stroke_width').addEventListener(
-      'change',
-      this.changeStrokeWidth.bind(this)
-    )
     $id('stroke_style').addEventListener('change', evt =>
       this.handleStrokeAttr.bind(this)('stroke-dasharray', evt)
     )
@@ -229,7 +225,6 @@ class BottomPanel {
     $id('stroke_linecap').addEventListener('change', evt =>
       this.handleStrokeAttr.bind(this)('stroke-linecap', evt)
     )
-    $id('opacity').addEventListener('change', this.handleOpacity.bind(this))
     $id('fill_color').init(i18next)
     $id('stroke_color').init(i18next)
   }

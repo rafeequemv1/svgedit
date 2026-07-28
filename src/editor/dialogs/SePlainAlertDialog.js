@@ -27,6 +27,36 @@ export default class SePlainAlertDialog extends PlainAlertDialog {
     result.content.append(
       fragmentFrom.html`
         <style>
+          /* Minimal elegant dark brand scrollbars */
+          * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+          }
+
+          *::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+          }
+
+          *::-webkit-scrollbar-track {
+            background: transparent;
+          }
+
+          *::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.22);
+            border-radius: 999px;
+            border: 2px solid transparent;
+            background-clip: padding-box;
+          }
+
+          *::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(255, 255, 255, 0.38);
+          }
+
+          *::-webkit-scrollbar-corner {
+            background: transparent;
+          }
+
           [part~="frame"] {
             padding: 1em;
             background: #CCC;

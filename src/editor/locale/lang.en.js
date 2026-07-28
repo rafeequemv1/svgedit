@@ -29,7 +29,7 @@ export default {
     dock_properties: 'Minimize properties panel',
     undock_properties: 'Expand properties panel',
     dock_rail_label: 'Properties',
-    align_hint: 'Drag objects — cyan guides snap edges and centers. Use buttons below to align selection.',
+    align_hint: 'Drag objects — cyan guides snap edges and centers. Use the align tools in the top toolbar.',
     prop_section_actions: 'Actions',
     prop_section_transform: 'Transform',
     prop_section_appearance: 'Appearance',
@@ -152,7 +152,7 @@ export default {
     jgraduate_repeat: 'Repeat'
   },
   tools: {
-    main_menu: 'Main Menu',
+    main_menu: 'File',
     bkgnd_color_opac: 'Change background color/opacity',
     connector_no_arrow: 'No arrow',
     fitToContent: 'Fit to Content',

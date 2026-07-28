@@ -3,13 +3,34 @@
         display: none;
     }
 
-    /* Force the scroll bar to appear so we see it hide when overlay opens. */
-    body::-webkit-scrollbar {
-        background: lightgray;
+    /* Minimal elegant dark brand scrollbars */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
     }
 
-    body::-webkit-scrollbar-thumb {
-        background: darkgray;
+    *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    *::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.38);
+    }
+
+    *::-webkit-scrollbar-corner {
+        background: transparent;
     }
 
     #svg_source_editor #svg_source_container {

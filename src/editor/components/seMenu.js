@@ -6,26 +6,49 @@ const template = document.createElement('template')
 template.innerHTML = `
   <style>
   :host {
-    padding: 0px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+  }
+  elix-menu-button {
+    height: 28px;
   }
   elix-menu-button::part(menu) {
-    background-color: var(--icon-bg-color) !important;
-    color: #fff;
+    background-color: #2c2c2c !important;
+    color: #f3f3f3;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    padding: 4px 0;
+    min-width: 180px;
   }
   elix-menu-button::part(popup-toggle) {
-    padding: 0.25em 0.30em !important
+    padding: 0.2em 0.55em !important;
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.88) !important;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.01em;
+    border-radius: 4px;
+  }
+  elix-menu-button::part(popup-toggle):hover {
+    background: rgba(255, 255, 255, 0.08) !important;
   }
   :host ::slotted([current]){
     background-color: var(--icon-bg-color-hover) !important;
     color: #fff;
   }
   :host ::slotted(*){
-    padding: 0.25em 1.25em 0.25em 0.25em !important;
-    margin: 2px;
+    padding: 0.35em 1.1em 0.35em 0.65em !important;
+    margin: 0;
+    border-radius: 0;
   }
   </style>
 
-  <elix-menu-button id="MenuButton" aria-label="Main Menu">
+  <elix-menu-button id="MenuButton" aria-label="File">
     <slot></slot>
   </elix-menu-button>
 
@@ -63,18 +86,21 @@ export class SeMenu extends HTMLElement {
    * @returns {void}
    */
   attributeChangedCallback (name, oldValue, newValue) {
-    const image = new Image()
     if (oldValue === newValue) return
     switch (name) {
       case 'src':
-        image.src = this.imgPath + '/' + newValue
-        image.width = 24
-        image.height = 24
-        image.alt = 'logo'
-        this.$label.prepend(image)
+        if (!newValue) break
+        {
+          const image = new Image()
+          image.src = this.imgPath + '/' + newValue
+          image.width = 18
+          image.height = 18
+          image.alt = ''
+          this.$label.prepend(image)
+        }
         break
       case 'label':
-        this.$label.prepend(newValue)
+        this.$label.prepend(document.createTextNode(newValue))
         break
       default:
         console.error(`unknown attribute: ${name}`)

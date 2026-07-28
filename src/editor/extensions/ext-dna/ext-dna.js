@@ -302,10 +302,12 @@ const LIVE_SPINE_REGEN_MS = 0
  * Update existing helix path `d` attrs in place — avoids DOM teardown during drag.
  * @param {SVGElement} visuals
  * @param {object} geom
+ * @param {{ strokeScale?: number }} [opts]
  * @returns {boolean}
  */
-const patchDnaVisualsInPlace = (visuals, geom) => {
+const patchDnaVisualsInPlace = (visuals, geom, opts = {}) => {
   if (!visuals || !geom || geom.empty) return false
+  const strokeScale = Number(opts.strokeScale) > 0 ? Number(opts.strokeScale) : 1
   const setD = (role, d) => {
     if (!d) return true
     const node = visuals.querySelector(`[data-role="${role}"]`)
@@ -313,18 +315,39 @@ const patchDnaVisualsInPlace = (visuals, geom) => {
     node.setAttribute('d', d)
     return true
   }
+  const setStroke = (role, width) => {
+    const node = visuals.querySelector(`[data-role="${role}"]`)
+    if (!node || !Number.isFinite(width)) return
+    node.setAttribute('stroke-width', String(Math.max(0.5, width / strokeScale)))
+  }
   if (geom.params?.styleMode === 'molecular') {
     const m = geom.molecular
     if (!setD('mol-bond-back', m.molBondsBack)) return false
     if (!setD('mol-bond-front', m.molBondsFront)) return false
     if (!setD('mol-atoms', m.molAtoms)) return false
     if (!setD('mol-mids', m.molMids)) return false
+    if (geom.hp) {
+      const sw = Math.max(1, geom.hp.strandWidth)
+      setStroke('mol-bond-back', sw * 0.25)
+      setStroke('mol-bond-front', sw * 0.25)
+      setStroke('rungs', sw * 0.28)
+      setStroke('hit', Math.max(18, geom.hp.helixRadius * 2.4))
+    }
   }
   const c = geom.cartoon
   if (!setD('strand-back-a', c.backA)) return false
   if (!setD('strand-back-b', c.backB)) return false
   if (!setD('strand-front-a', c.frontA)) return false
   if (!setD('strand-front-b', c.frontB)) return false
+  if (geom.hp) {
+    const sw = Math.max(1, geom.hp.strandWidth)
+    setStroke('strand-back-a', sw)
+    setStroke('strand-back-b', sw)
+    setStroke('strand-front-a', sw)
+    setStroke('strand-front-b', sw)
+    setStroke('rungs', Math.max(1, sw * 0.58))
+    setStroke('hit', Math.max(18, geom.hp.helixRadius * 2.4))
+  }
   const rungNode = visuals.querySelector('[data-role="rungs"]')
   if (rungNode && c.rungs?.length) {
     let d = ''
@@ -339,13 +362,83 @@ const patchDnaVisualsInPlace = (visuals, geom) => {
 }
 
 /**
+ * Apply an SVGMatrix to a path `d` (via polyline sampling — good enough for live preview).
+ * @param {string} d
+ * @param {SVGMatrix} m
+ * @param {number} [steps]
+ */
+const transformPathD = (d, m, steps = 6) => {
+  if (!d || !m) return d || ''
+  const pts = pathDToPolyline(d, steps)
+  if (pts.length < 2) return ''
+  return pointsToPathD(pts.map((p) => ({
+    x: m.a * p.x + m.c * p.y + m.e,
+    y: m.b * p.x + m.d * p.y + m.f
+  })))
+}
+
+/**
+ * Map helix geometry into the DNA group's local space (inverse of live transform).
+ * Matches LabCanvas: path scales, helix thickness stays constant on screen.
+ * @param {object} geom
+ * @param {SVGMatrix} inv
+ */
+const mapGeomByMatrix = (geom, inv) => {
+  if (!geom || geom.empty || !inv) return geom
+  const mapD = (d) => transformPathD(d, inv, 5)
+  const c = geom.cartoon || {}
+  return {
+    ...geom,
+    hitD: mapD(geom.hitD),
+    cartoon: {
+      backA: mapD(c.backA),
+      frontA: mapD(c.frontA),
+      backB: mapD(c.backB),
+      frontB: mapD(c.frontB),
+      rungs: (c.rungs || []).map((r) => ({
+        ...r,
+        x1: inv.a * r.x1 + inv.c * r.y1 + inv.e,
+        y1: inv.b * r.x1 + inv.d * r.y1 + inv.f,
+        x2: inv.a * r.x2 + inv.c * r.y2 + inv.e,
+        y2: inv.b * r.x2 + inv.d * r.y2 + inv.f
+      }))
+    },
+    molecular: {
+      molBondsBack: mapD(geom.molecular?.molBondsBack),
+      molBondsFront: mapD(geom.molecular?.molBondsFront),
+      molAtoms: mapD(geom.molecular?.molAtoms),
+      molMids: mapD(geom.molecular?.molMids)
+    },
+    histones: [],
+    polarity: [],
+    annotations: []
+  }
+}
+
+/**
+ * Combined local transform matrix without consolidating (safe during SVG-edit drag).
+ * @param {SVGElement} el
+ * @returns {SVGMatrix|null}
+ */
+const getLocalTransformMatrix = (el) => {
+  const svg = el?.ownerSVGElement
+  const list = el?.transform?.baseVal
+  if (!svg || !list?.numberOfItems) return null
+  let m = svg.createSVGMatrix()
+  for (let i = 0; i < list.numberOfItems; i++) {
+    m = m.multiply(list.getItem(i).matrix)
+  }
+  return m
+}
+
+/**
  * Build / replace only the helix visuals group. Never touches the spine path
  * (so pathedit grips keep working while we live-update the DNA).
  *
  * @param {SVGElement} group
  * @param {object} attrs
  * @param {string} spineD
- * @param {{ editingSpine?: boolean, livePreview?: boolean }} [opts]
+ * @param {{ editingSpine?: boolean, livePreview?: boolean, strokeScale?: number, mappedGeom?: object }} [opts]
  * @returns {boolean} true if geometry was emitted
  */
 const rebuildDnaVisuals = (group, attrs, spineD, opts = {}) => {
@@ -362,14 +455,25 @@ const rebuildDnaVisuals = (group, attrs, spineD, opts = {}) => {
   const spine = group.querySelector(':scope > path[data-role="spine"]') ||
     group.querySelector('path[data-role="spine"]')
 
-  const geom = computeDnaGeometry(
+  const geom = opts.mappedGeom || computeDnaGeometry(
     spineD ? { spineD, points: attrs.points } : attrs.points,
     { ...attrs, livePreview: !!opts.livePreview }
   )
+  const strokeScale = Number(opts.strokeScale) > 0 ? Number(opts.strokeScale) : 1
+  const emitGeom = (strokeScale !== 1 && geom?.hp)
+    ? {
+      ...geom,
+      hp: {
+        ...geom.hp,
+        strandWidth: Math.max(0.5, geom.hp.strandWidth / strokeScale),
+        helixRadius: Math.max(1, geom.hp.helixRadius / strokeScale)
+      }
+    }
+    : geom
 
   if (opts.livePreview) {
     const visuals = group.querySelector('[data-role="dna-visuals"]')
-    if (visuals && patchDnaVisualsInPlace(visuals, geom)) {
+    if (visuals && patchDnaVisualsInPlace(visuals, geom, { strokeScale })) {
       return true
     }
   }
@@ -400,7 +504,7 @@ const rebuildDnaVisuals = (group, attrs, spineD, opts = {}) => {
     'pointer-events': 'none'
   })
   if (opts.editingSpine) visuals.setAttribute('opacity', '0.7')
-  emitDnaSvg(visuals, geom)
+  emitDnaSvg(visuals, emitGeom)
   if (opts.editingSpine) {
     visuals.querySelectorAll('[data-role="hit"]').forEach((h) => {
       h.setAttribute('pointer-events', 'none')
@@ -542,6 +646,9 @@ export default {
     let spineEditLock = false
     let lastLiveSpineD = ''
     let spineEditQueued = false
+    let transformRegenRaf = 0
+    let transformRegenQueued = false
+    let lastTransformKey = ''
 
     const nextId = () => svgCanvas.getNextId()
 
@@ -552,6 +659,7 @@ export default {
     /**
      * SVGEdit pathedit grips use path-local coords and ignore parent <g> transform.
      * Bake any group transform into spine `d` + helix geometry so nodes sit on the stroke.
+     * LabCanvas: path geometry scales; brush thickness stays constant.
      * @returns {boolean} true if a transform was baked
      */
     const bakeDnaGroupTransform = (group) => {
@@ -573,6 +681,7 @@ export default {
 
       bakingTransform = true
       regeneratingVisuals = true
+      lastTransformKey = ''
       try {
         if (spine) {
           spine.setAttribute('d', spineD)
@@ -597,12 +706,6 @@ export default {
           group.removeAttribute('transform')
         }
 
-        const scale = Math.sqrt(Math.abs(ctm.a * ctm.d - ctm.b * ctm.c)) || 1
-        let thickness = attrs.thickness
-        if (Number.isFinite(scale) && Math.abs(scale - 1) > 0.02) {
-          thickness = Math.min(2.4, Math.max(0.5, thickness * scale))
-        }
-
         const pts = attrs.points || []
         const mappedPts = pts.length
           ? pts.map((p) => ({
@@ -611,10 +714,11 @@ export default {
           }))
           : pathDToPolyline(spineD, 12)
 
+        // Keep thickness unchanged (LabCanvas scaleShape only moves vertices).
         regenerateDna(group, {
           spineD,
           points: mappedPts.length ? mappedPts : attrs.points,
-          thickness
+          thickness: attrs.thickness
         }, { nextId })
         group.setAttribute('data-spine-d', spineD)
         svgCanvas.selectorManager.requestSelector(group)?.resize?.()
@@ -623,6 +727,90 @@ export default {
         bakingTransform = false
         regeneratingVisuals = false
       }
+    }
+
+    /**
+     * Live helix reshape while the DNA <g> is moved / resized (LabCanvas-style).
+     * Group keeps its SVG transform during drag; helix is recomputed in world space
+     * with constant thickness, then mapped back with inverse CTM + stroke compensation.
+     */
+    const liveRegenFromGroupTransform = (group, { finalQuality = false } = {}) => {
+      if (!group || editingSpineGroup || bakingTransform || regeneratingVisuals) return
+
+      const runRebuild = () => {
+        transformRegenRaf = 0
+        transformRegenQueued = false
+        if (editingSpineGroup || bakingTransform || regeneratingVisuals) return
+        const tr = group.getAttribute('transform')
+        if (!tr || !/\S/.test(tr)) return
+
+        const m = getLocalTransformMatrix(group)
+        if (!m) return
+        // Rigid move/rotate already looks correct under SVG transform — only
+        // rescale/shear needs LabCanvas-style helix reshape (constant thickness).
+        const sx = Math.hypot(m.a, m.b)
+        const sy = Math.hypot(m.c, m.d)
+        if (Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return
+
+        const key = `${tr}|${finalQuality ? 1 : 0}`
+        if (!finalQuality && key === lastTransformKey) return
+        lastTransformKey = key
+
+        let inv
+        try {
+          inv = m.inverse()
+        } catch (_) {
+          return
+        }
+
+        const spine = getSpine(group)
+        const attrs = readDnaAttrs(group)
+        const localD = spine?.getAttribute('d') || attrs.spineD || resolveSpineD(attrs)
+        if (!localD) return
+
+        const sampleSteps = finalQuality ? 10 : 5
+        const worldD = transformPathD(localD, m, sampleSteps)
+        if (!worldD) return
+
+        const worldGeom = computeDnaGeometry(
+          { spineD: worldD, points: attrs.points },
+          { ...attrs, livePreview: !finalQuality }
+        )
+        if (worldGeom.empty) return
+
+        const strokeScale = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) || 1
+        const mapped = mapGeomByMatrix(worldGeom, inv)
+        try {
+          rebuildDnaVisuals(group, attrs, localD, {
+            livePreview: !finalQuality,
+            mappedGeom: mapped,
+            strokeScale
+          })
+        } catch (_) { /* keep transform drag smooth */ }
+      }
+
+      const schedule = () => {
+        if (transformRegenRaf) {
+          transformRegenQueued = true
+          return
+        }
+        transformRegenRaf = requestAnimationFrame(() => {
+          runRebuild()
+          if (transformRegenQueued) schedule()
+        })
+      }
+
+      if (finalQuality) {
+        if (transformRegenRaf) {
+          cancelAnimationFrame(transformRegenRaf)
+          transformRegenRaf = 0
+        }
+        transformRegenQueued = false
+        runRebuild()
+        return
+      }
+
+      schedule()
     }
 
     const ensureSpine = (group, { editing = false } = {}) => {
@@ -727,6 +915,15 @@ export default {
         spineEditRaf = 0
       }
       lastLiveSpineD = ''
+    }
+
+    const cancelTransformRegen = () => {
+      if (transformRegenRaf) {
+        cancelAnimationFrame(transformRegenRaf)
+        transformRegenRaf = 0
+      }
+      transformRegenQueued = false
+      lastTransformKey = ''
     }
 
     /** Snapshot spine `d` when entering pathedit (regen driven by mouseMove + elementChanged). */
@@ -1178,6 +1375,22 @@ export default {
       },
 
       /**
+       * Live reshape helix while DNA group is moved / resized (LabCanvas-style).
+       */
+      elementTransition (opts) {
+        if (bakingTransform || regeneratingVisuals || editingSpineGroup) return
+        const elems = opts.elems || []
+        for (let i = 0; i < elems.length; i++) {
+          const el = elems[i]
+          if (!el) continue
+          const group = findDnaGroup(el)
+          if (group && group === el) {
+            liveRegenFromGroupTransform(group)
+          }
+        }
+      },
+
+      /**
        * Spine path edits: live-regenerate helix.
        * Group move/resize: bake transform into spine `d` (and points).
        */
@@ -1199,6 +1412,7 @@ export default {
 
         const group = findDnaGroup(el)
         if (!group || editingSpineGroup) return
+        cancelTransformRegen()
         if (bakeDnaGroupTransform(group)) {
           syncPanelFromElem(group)
         }

@@ -1130,6 +1130,14 @@ class TopPanel {
     $click($id('tool_wireframe'), this.clickWireframe.bind(this))
     $click($id('tool_undo'), this.clickUndo.bind(this))
     $click($id('tool_redo'), this.clickRedo.bind(this))
+    $id('stroke_width').addEventListener(
+      'change',
+      this.editor.bottomPanel.changeStrokeWidth.bind(this.editor.bottomPanel)
+    )
+    $id('opacity').addEventListener(
+      'change',
+      this.editor.bottomPanel.handleOpacity.bind(this.editor.bottomPanel)
+    )
     $click($id('tool_clone'), this.clickClone.bind(this))
     $click($id('tool_clone_multi'), this.clickClone.bind(this))
     $click($id('tool_delete'), this.deleteSelected.bind(this))

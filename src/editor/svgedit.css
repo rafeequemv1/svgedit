@@ -16,6 +16,39 @@
   --prop-header-color: rgba(255, 255, 255, 0.55);
   --prop-divider: rgba(255, 255, 255, 0.08);
   --prop-field-bg: #2a2a2a;
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.22);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
+}
+
+/* Minimal elegant dark brand scrollbars (app-wide) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .svg_editor * {
@@ -365,8 +398,7 @@
 #right_properties_extensions > .cube3d_panel,
 #right_properties_extensions > .bilayer_panel,
 #right_properties_extensions > .nanoparticle_panel,
-#right_properties_extensions > .extension_panel,
-#right_align_extensions > .pathfinder_panel {
+#right_properties_extensions > .extension_panel {
   flex-direction: column;
   flex-wrap: nowrap;
   width: 100%;
@@ -388,11 +420,30 @@
   margin: 0 0 2px;
 }
 
-.pathfinder_tools {
-  display: grid;
-  grid-template-columns: repeat(4, 32px);
-  gap: 6px;
-  justify-content: start;
+#pathfinder_panel.pathfinder_top_panel {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+}
+
+#stroke_panel,
+#align_top_panel,
+.top_tool_group {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+}
+
+.top_align_group {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
 }
 
 #cube3d_panel se-range-input,
@@ -524,16 +575,55 @@ hr {
   position: relative;
 }
 
-/* Main button
+/* Main menubar
 —————————————————————————————*/
 
-#main_button {
+#app_menubar {
   grid-area: main;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  min-height: var(--top-toolbar-min-height);
+  padding: 0 6px 0 8px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--prop-divider);
+  background: linear-gradient(180deg, #3a3a3a 0%, var(--main-bg-color) 100%);
+}
+
+#app_brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding-right: 10px;
+  border-right: 1px solid var(--prop-divider);
   color: #fff;
-  border-radius: 3px;
-  padding-block: 2px;
-  padding-left: 3px;
-  height: 34px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#app_brand img {
+  display: block;
+  opacity: 0.92;
+}
+
+#main_button {
+  color: #fff;
+  border-radius: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+}
+
+#main_button:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 #main_icon {
@@ -664,14 +754,6 @@ hr {
   overflow-y: hidden;
   display: flex;
   align-items: center;
-  scrollbar-width: thin;
-  /* Firefox */
-}
-
-#tools_bottom::-webkit-scrollbar {
-  /* Chrome, Edge, and Safari */
-  width: 3px;
-  height: 3px;
 }
 
 #tools_bottom se-list,
@@ -693,27 +775,8 @@ hr {
   margin-left: auto;
   margin-right: auto;
   overflow-y: scroll;
-  scrollbar-width: none;
-  /* Firefox */
   user-select: none;
 }
-
-#tools_left::-webkit-scrollbar {
-  /* Chrome, Edge, and Safari */
-  width: 3px;
-}
-
-#tools_left::-webkit-scrollbar-track,
-#tools_bottom::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-#tools_left::-webkit-scrollbar-thumb,
-#tools_bottom::-webkit-scrollbar-thumb {
-  background-color: rgb(70, 70, 70);
-}
-
-/* End scrollbar styling */
 
 /*—————————————————————————————*/
 
