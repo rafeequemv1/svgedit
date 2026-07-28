@@ -418,9 +418,17 @@ export default {
       localStorage.setItem(LS_OPEN, open ? '1' : '0')
       const btn = $id('tool_aichat')
       if (btn) btn.pressed = open
-      svgEditor.updateCanvas?.(false)
+      // Wait for CSS grid reflow so canvas/path-grip offsets use the final workarea size
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => scheduleAskTipReposition())
+        requestAnimationFrame(() => {
+          svgEditor.updateCanvas?.(false)
+          try {
+            if (svgCanvas.getCurrentMode?.() === 'pathedit') {
+              svgCanvas.getPathObj?.()?.update?.()
+            }
+          } catch (_) { /* ignore */ }
+          scheduleAskTipReposition()
+        })
       })
       if (open) $id('ai_chat_input')?.focus()
     }

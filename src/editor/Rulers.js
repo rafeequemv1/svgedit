@@ -38,6 +38,11 @@ class Rulers {
         resizeTimer = setTimeout(() => {
           try {
             this.editor.updateCanvas?.(false)
+            // Keep path-edit grips aligned after AI chat / panel layout changes
+            const canvas = this.editor.svgCanvas
+            if (canvas?.getCurrentMode?.() === 'pathedit') {
+              canvas.getPathObj?.()?.update?.()
+            }
           } catch (_) { /* ignore */ }
         }, 60)
       })

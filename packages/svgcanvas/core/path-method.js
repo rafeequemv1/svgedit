@@ -9,7 +9,7 @@
 import { NS } from './namespaces.js'
 import { ChangeElementCommand } from './history.js'
 import {
-  transformPoint, getMatrix
+  transformPoint, getMatrix, getTransformList
 } from './math.js'
 import {
   assignAttributes, getRotationAngle,
@@ -247,6 +247,62 @@ const getDnaSpineGroupCtm = (pathElem) => {
 }
 
 /**
+ * Map a point from an element's local user space into selectorParentGroup space.
+ * Uses live screen CTMs so grips stay aligned when the AI chat panel (or any
+ * side panel) changes workarea layout.
+ * @param {SVGElement} elem
+ * @param {number} x
+ * @param {number} y
+ * @returns {module:math.XYObject|null}
+ */
+const localToGripParent = (elem, x, y) => {
+  const parent = getElement('selectorParentGroup')
+  const svg = elem?.ownerSVGElement
+  if (!elem || !parent || !svg?.createSVGPoint) return null
+  try {
+    const elemCtm = elem.getScreenCTM?.()
+    const parentCtm = parent.getScreenCTM?.()
+    if (!elemCtm || !parentCtm) return null
+    const pt = svg.createSVGPoint()
+    pt.x = x
+    pt.y = y
+    const screen = pt.matrixTransform(elemCtm)
+    const local = screen.matrixTransform(parentCtm.inverse())
+    if (!Number.isFinite(local.x) || !Number.isFinite(local.y)) return null
+    return { x: local.x, y: local.y }
+  } catch (_) {
+    return null
+  }
+}
+
+/**
+ * Inverse of {@link localToGripParent}.
+ * @param {SVGElement} elem
+ * @param {number} x
+ * @param {number} y
+ * @returns {module:math.XYObject|null}
+ */
+const gripParentToLocal = (elem, x, y) => {
+  const parent = getElement('selectorParentGroup')
+  const svg = elem?.ownerSVGElement
+  if (!elem || !parent || !svg?.createSVGPoint) return null
+  try {
+    const elemCtm = elem.getScreenCTM?.()
+    const parentCtm = parent.getScreenCTM?.()
+    if (!elemCtm || !parentCtm) return null
+    const pt = svg.createSVGPoint()
+    pt.x = x
+    pt.y = y
+    const screen = pt.matrixTransform(parentCtm)
+    const local = screen.matrixTransform(elemCtm.inverse())
+    if (!Number.isFinite(local.x) || !Number.isFinite(local.y)) return null
+    return { x: local.x, y: local.y }
+  } catch (_) {
+    return null
+  }
+}
+
+/**
 * @function module:path.getGripPt
 * @param {Segment} seg
 * @param {module:math.XYObject} altPt
@@ -254,11 +310,14 @@ const getDnaSpineGroupCtm = (pathElem) => {
 */
 export const getGripPtMethod = (seg, altPt) => {
   const { path: pth } = seg
-  let out = {
-    x: altPt ? altPt.x : seg.item.x,
-    y: altPt ? altPt.y : seg.item.y
-  }
+  const x = altPt ? altPt.x : seg.item.x
+  const y = altPt ? altPt.y : seg.item.y
 
+  const viaScreen = localToGripParent(pth?.elem, x, y)
+  if (viaScreen) return viaScreen
+
+  // Fallback for headless / detached nodes
+  let out = { x, y }
   if (pth.matrix) {
     out = transformPoint(out.x, out.y, pth.matrix)
   }
@@ -269,7 +328,6 @@ export const getGripPtMethod = (seg, altPt) => {
   const zoom = svgCanvas.getZoom()
   out.x *= zoom
   out.y *= zoom
-
   return out
 }
 /**
@@ -279,6 +337,9 @@ export const getGripPtMethod = (seg, altPt) => {
 * @returns {module:math.XYObject}
 */
 export const getPointFromGripMethod = (pt, pth) => {
+  const viaScreen = gripParentToLocal(pth?.elem, pt.x, pt.y)
+  if (viaScreen) return viaScreen
+
   let out = {
     x: pt.x,
     y: pt.y
@@ -1157,9 +1218,15 @@ export class Path {
   */
   update () {
     const { elem } = this
-    if (getRotationAngle(elem)) {
+    const tlist = getTransformList(elem)
+    if (tlist?.numberOfItems || getRotationAngle(elem)) {
       this.matrix = getMatrix(elem)
-      this.imatrix = this.matrix.inverse()
+      try {
+        this.imatrix = this.matrix.inverse()
+      } catch (_) {
+        this.imatrix = null
+        this.matrix = null
+      }
     } else {
       this.matrix = null
       this.imatrix = null
